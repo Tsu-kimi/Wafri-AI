@@ -44,9 +44,11 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
 import logging
 import time
+import traceback as _traceback
 from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -96,10 +98,12 @@ async def run_bridge(
 
     def _log(level: str, msg: str, event_type: str = "-", **kw: Any) -> None:
         elapsed_ms = (time.monotonic_ns() - start_ns) // 1_000_000
-        exc_info = kw.pop("exc_info", False)  # must not land in extra — logging owns this kwarg
+        # Passing exc_info=True alongside extra= causes KeyError in Python's
+        # LogRecord when exc_info is already set as a record attribute.
+        # Callers should pass traceback text via kw["tb"] as a plain string.
+        kw.pop("exc_info", None)
         getattr(logger, level)(
             msg,
-            exc_info=exc_info,
             extra={**log_ctx, "event_type": event_type, "elapsed_ms": elapsed_ms, **kw},
         )
 
@@ -267,7 +271,17 @@ async def run_bridge(
         except asyncio.CancelledError:
             pass
         except Exception as exc:
-            _log("error", f"downstream error: {exc}", "DOWNSTREAM_ERR", exc_info=True)
+            exc_str = str(exc)
+            if "RESOURCE_EXHAUSTED" in exc_str or "Maximum concurrent sessions" in exc_str:
+                _log("warning", "Gemini Live quota exceeded — max concurrent sessions reached", "QUOTA_EXCEEDED")
+                with contextlib.suppress(Exception):
+                    await websocket.send_json({
+                        "type": "ERROR",
+                        "code": "RESOURCE_EXHAUSTED",
+                        "message": "The AI service is at capacity. Please wait 30 seconds and try again.",
+                    })
+            else:
+                _log("error", f"downstream error: {exc}", "DOWNSTREAM_ERR", tb=_traceback.format_exc())
         finally:
             live_request_queue.close()
 
