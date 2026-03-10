@@ -11,8 +11,7 @@
 # secrets (see infra/README.md for the exact values).
 #
 # Required GitHub repository secrets:
-#   GCP_WORKLOAD_IDENTITY_PROVIDER — from setup-iam.sh output
-#   GCP_SERVICE_ACCOUNT            — from setup-iam.sh output
+#   GCP_CREDENTIALS_JSON — contents of the GCP service account key JSON file
 # =============================================================================
 
 name: Deploy to Cloud Run
@@ -36,10 +35,6 @@ jobs:
     permissions:
       # contents:read  — allows actions/checkout to fetch the repository
       contents: read
-      # id-token:write — REQUIRED for Workload Identity Federation.
-      # Without this permission the OIDC token request will be denied and
-      # the google-github-actions/auth step will fail with a 403.
-      id-token: write
 
     steps:
       # ───────────────────────────────────────────────────────────────────
@@ -49,23 +44,16 @@ jobs:
         uses: actions/checkout@v4
 
       # ───────────────────────────────────────────────────────────────────
-      # 2. Authenticate to Google Cloud using Workload Identity Federation
+      # 2. Authenticate to Google Cloud using a service account JSON key
       #
-      # This step exchanges the GitHub OIDC token for a short-lived GCP
-      # access token that impersonates the fieldvet-backend service account.
-      # No JSON key is ever stored — the credential lives only for this run.
-      #
-      # The Workload Identity Pool and Provider are created by
-      # scripts/setup-iam.sh.  Store the printed values as GitHub secrets:
-      #   GCP_WORKLOAD_IDENTITY_PROVIDER
-      #   GCP_SERVICE_ACCOUNT
+      # Store the full contents of your GCP service account key JSON as a
+      # GitHub repository secret named GCP_CREDENTIALS_JSON.
       # ───────────────────────────────────────────────────────────────────
       - name: Authenticate to Google Cloud
         id: auth
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
 
       # ───────────────────────────────────────────────────────────────────
       # 3. Submit Cloud Build job
