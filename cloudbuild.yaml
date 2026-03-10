@@ -170,7 +170,7 @@ steps:
             echo ""
             echo "✓ /health returned HTTP 200 — deployment is healthy"
             echo "  Service URL : $$SERVICE_URL"
-            echo "  Commit SHA  : $SHORT_SHA"
+            echo "  Commit SHA  : ${_SHORT_SHA}"
             exit 0
           fi
 
@@ -196,5 +196,5 @@ steps:
 # operators can look up "which SHA is in production" from the GCP console.
 # ─────────────────────────────────────────────────────────────────────────────
 images:
-  - ${_REPO}/backend:$SHORT_SHA
+  - ${_REPO}/backend:${_SHORT_SHA}
   - ${_REPO}/backend:latest
