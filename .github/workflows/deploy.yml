@@ -56,26 +56,21 @@ jobs:
           credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
 
       # ───────────────────────────────────────────────────────────────────
-      # 3. Submit Cloud Build job
+      # 3. Submit Cloud Build job using the existing cloudbuild.yaml
       #
-      # google-github-actions/deploy-cloudrun@v2 with source: . submits the
-      # full repository as source to Cloud Build.  Cloud Build detects the
-      # cloudbuild.yaml at the repo root and executes all four steps:
+      # gcloud builds submit uses cloudbuild.yaml which already handles:
       #   Step 1 — docker build (SHA-tagged + latest)
-      #   Step 2 — docker push --all-tags
-      #   Step 3 — gcloud run deploy (all Phase 4 production flags + secrets)
-      #   Step 4 — health check loop (/health, 10 attempts, 5-second waits)
+      #   Step 2 — docker push --all-tags to fieldvet-images Artifact Registry
+      #   Step 3 — gcloud run deploy
+      #   Step 4 — health check loop
       #
-      # Substitution variables override cloudbuild.yaml defaults so this
-      # workflow controls the target service and region without editing YAML.
+      # This avoids the deploy-cloudrun@v2 --source . path which tries to
+      # create a NEW cloud-run-source-deploy repo and ignores cloudbuild.yaml.
       # ───────────────────────────────────────────────────────────────────
       - name: Deploy to Cloud Run via Cloud Build
-        uses: google-github-actions/deploy-cloudrun@v2
-        with:
-          service: fieldvet-backend
-          region: ${{ env.REGION }}
-          # source: . sends the full repo root so Cloud Build finds cloudbuild.yaml
-          # and Dockerfile.  The Dockerfile references ./backend/ which requires
-          # the repo root as build context.
-          source: .
-          project_id: ${{ env.PROJECT_ID }}
+        run: |
+          gcloud builds submit \
+            --config cloudbuild.yaml \
+            --project ${{ env.PROJECT_ID }} \
+            --substitutions _SERVICE_NAME=fieldvet-backend,_REGION=${{ env.REGION }} \
+            .
