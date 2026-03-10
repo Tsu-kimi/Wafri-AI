@@ -1,5 +1,6 @@
 # 🐄 Wafrivet Field Vet: Real-Time Multimodal AI Vet
 
+![Deploy to Cloud Run](https://github.com/Tsu-kimi/Wafrivet-Field-Vet/actions/workflows/deploy.yml/badge.svg)
 ![Google Cloud](https://img.shields.io/badge/GoogleCloud-%234285F4.svg?style=for-the-badge&logo=google-cloud&logoColor=white)
 ![Gemini](https://img.shields.io/badge/Gemini%20Live-%238E75B2.svg?style=for-the-badge&logo=googlebard&logoColor=white)
 ![Next JS](https://img.shields.io/badge/Next-black?style=for-the-badge&logo=next.js&logoColor=white)

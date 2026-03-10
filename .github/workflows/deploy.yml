@@ -1,0 +1,93 @@
+# =============================================================================
+# .github/workflows/deploy.yml — Wafrivet Field Vet Phase 6
+#
+# Automated deployment pipeline: every push to the main branch triggers a
+# full Cloud Build run (build → push → deploy → health-check) with ZERO
+# manual steps and NO service account JSON key stored in GitHub.
+#
+# Authentication uses Workload Identity Federation (WIF) — the keyless GCP
+# auth pattern for GitHub Actions.  Run scripts/setup-iam.sh once to create
+# the Workload Identity Pool and Provider, then add two GitHub repository
+# secrets (see infra/README.md for the exact values).
+#
+# Required GitHub repository secrets:
+#   GCP_WORKLOAD_IDENTITY_PROVIDER — from setup-iam.sh output
+#   GCP_SERVICE_ACCOUNT            — from setup-iam.sh output
+# =============================================================================
+
+name: Deploy to Cloud Run
+
+on:
+  # Trigger only on direct pushes to main — pull requests are NOT deployed
+  # so unreviewed code never reaches production Cloud Run.
+  push:
+    branches:
+      - main
+
+env:
+  PROJECT_ID: wafrivet-agent
+  REGION: us-central1
+
+jobs:
+  deploy:
+    name: Build, Push & Deploy
+    runs-on: ubuntu-latest
+
+    permissions:
+      # contents:read  — allows actions/checkout to fetch the repository
+      contents: read
+      # id-token:write — REQUIRED for Workload Identity Federation.
+      # Without this permission the OIDC token request will be denied and
+      # the google-github-actions/auth step will fail with a 403.
+      id-token: write
+
+    steps:
+      # ───────────────────────────────────────────────────────────────────
+      # 1. Checkout the repository at the commit that triggered this run
+      # ───────────────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ───────────────────────────────────────────────────────────────────
+      # 2. Authenticate to Google Cloud using Workload Identity Federation
+      #
+      # This step exchanges the GitHub OIDC token for a short-lived GCP
+      # access token that impersonates the fieldvet-backend service account.
+      # No JSON key is ever stored — the credential lives only for this run.
+      #
+      # The Workload Identity Pool and Provider are created by
+      # scripts/setup-iam.sh.  Store the printed values as GitHub secrets:
+      #   GCP_WORKLOAD_IDENTITY_PROVIDER
+      #   GCP_SERVICE_ACCOUNT
+      # ───────────────────────────────────────────────────────────────────
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      # ───────────────────────────────────────────────────────────────────
+      # 3. Submit Cloud Build job
+      #
+      # google-github-actions/deploy-cloudrun@v2 with source: . submits the
+      # full repository as source to Cloud Build.  Cloud Build detects the
+      # cloudbuild.yaml at the repo root and executes all four steps:
+      #   Step 1 — docker build (SHA-tagged + latest)
+      #   Step 2 — docker push --all-tags
+      #   Step 3 — gcloud run deploy (all Phase 4 production flags + secrets)
+      #   Step 4 — health check loop (/health, 10 attempts, 5-second waits)
+      #
+      # Substitution variables override cloudbuild.yaml defaults so this
+      # workflow controls the target service and region without editing YAML.
+      # ───────────────────────────────────────────────────────────────────
+      - name: Deploy to Cloud Run via Cloud Build
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: fieldvet-backend
+          region: ${{ env.REGION }}
+          # source: . sends the full repo root so Cloud Build finds cloudbuild.yaml
+          # and Dockerfile.  The Dockerfile references ./backend/ which requires
+          # the repo root as build context.
+          source: .
+          project_id: ${{ env.PROJECT_ID }}

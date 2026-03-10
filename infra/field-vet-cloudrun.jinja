@@ -1,126 +1,169 @@
 {#
-  infra/field-vet-cloudrun.jinja
-  ───────────────────────────────
+  infra/field-vet-cloudrun.jinja — Wafrivet Field Vet Phase 6
+  ─────────────────────────────────────────────────────────────
   Cloud Deployment Manager Jinja2 template for the fieldvet-backend
-  Cloud Run service.
+  Cloud Run service plus its public-access IAM policy binding.
 
-  All environment-specific values are sourced from field-vet-config.yaml.
-  The GCP project ID is never hardcoded here — it is taken from the
-  deployment-time env['project'] variable that Deployment Manager injects.
+  All environment-specific values come from field-vet-config.yaml.
+  The GCP project ID is never hardcoded here — Deployment Manager injects it
+  as env['project'] at apply time.
 
-  Parameters (passed from config YAML via properties):
-    serviceName          (str)  Cloud Run service name
-    image                (str)  Full Artifact Registry image path including tag
-    region               (str)  GCP region (e.g. us-central1)
-    serviceAccountName   (str)  Full SA email for the Cloud Run identity
-    timeoutSeconds       (int)  Max WebSocket session duration (max 3600)
-    minInstances         (int)  Minimum warm instances (1 prevents cold-start drops)
-    concurrency          (int)  Max concurrent requests per instance
-    secrets              (list) List of {envName, secretName} objects
-    startupInitialDelay  (int)  Seconds before first startup probe attempt
-    startupFailureLimit  (int)  Consecutive failures before container is killed
+  Resource type for Cloud Run v1:
+    gcp-types/run-v1:namespaces.services
+  This is the correct KNative-compatible type provider for Deployment Manager.
+  Do NOT use run.googleapis.com/v2/projects.locations.services (v2 REST style)
+  — Deployment Manager's run-v1 type provider does not support the v2 resource
+  path and will throw PERMISSION_DENIED or 404 errors.
 
-  Usage:
-    gcloud deployment-manager deployments create fieldvet-prod \
+  Parameters accepted (via properties block in field-vet-config.yaml):
+    serviceName     (str)  Cloud Run service name (used as resource name)
+    region          (str)  GCP region, e.g. us-central1
+    image           (str)  Full Artifact Registry image URI including tag
+    serviceAccount  (str)  Full SA email for the Cloud Run identity
+    minInstances    (int)  Minimum warm instances (1 prevents WebSocket drops)
+    maxInstances    (int)  Hard cap on auto-scale ceiling
+    timeoutSeconds  (int)  Max request/WebSocket session duration (max 3600)
+    memory          (str)  Container memory limit, e.g. 1Gi
+    cpu             (str)  Container CPU limit, e.g. "1"
+
+  Apply with:
+    gcloud deployment-manager deployments create fieldvet-backend \
+      --config infra/field-vet-config.yaml
+
+  Update after changes:
+    gcloud deployment-manager deployments update fieldvet-backend \
       --config infra/field-vet-config.yaml
 #}
 
 resources:
+# ─────────────────────────────────────────────────────────────────────────────
+# Resource 1 — Cloud Run v1 service
+#
+# Uses the gcp-types/run-v1:namespaces.services Deployment Manager type
+# provider.  This is the KNative-compatible path accepted by the run-v1
+# type provider; the v2 REST-style path (run.googleapis.com/v2/...) is NOT
+# supported and causes PERMISSION_DENIED with Deployment Manager.
+# ─────────────────────────────────────────────────────────────────────────────
 - name: {{ properties['serviceName'] }}
   type: gcp-types/run-v1:namespaces.services
   properties:
-    # Cloud Run v1 API — KNative serving resource
-    # Target namespace is the GCP project ID (Deployment Manager convention)
     parent: namespaces/{{ env['project'] }}
 
     metadata:
       name: {{ properties['serviceName'] }}
       namespace: {{ env['project'] }}
       annotations:
-        # Accept traffic from the public internet (required for --allow-unauthenticated)
+        # Allow direct internet access (required for --allow-unauthenticated)
         run.googleapis.com/ingress: all
 
     spec:
       template:
         metadata:
           annotations:
-            # Keep at least one instance warm at all times.
-            # Scale-to-zero would drop every active WebSocket connection.
+            # ── Auto-scaling ────────────────────────────────────────────────
+            # Minimum: 1 keeps a warm container always ready so WebSocket
+            # connections are never dropped by scale-to-zero events.
             autoscaling.knative.dev/minScale: "{{ properties.get('minInstances', 1) }}"
+            # Maximum: hard ceiling on parallel instances (cost control).
+            autoscaling.knative.dev/maxScale: "{{ properties.get('maxInstances', 10) }}"
 
-            # Session affinity: route reconnecting clients to the same instance
-            # when possible, reducing ADK session-state recreation overhead.
-            # Supabase session_handles provides the correct fallback when
-            # affinity is broken (instance scaled out or instance replaced).
+            # ── Session affinity ─────────────────────────────────────────────
+            # Routes reconnecting clients to the same instance where possible.
+            # This reduces ADK session-state recreation cost.  Supabase
+            # session_handles.py provides the correct fallback if affinity breaks.
             run.googleapis.com/sessionAffinity: "true"
 
-            # Startup probe — allows slow ADK + Supabase client initialisation
+            # ── Cold-start CPU boost ─────────────────────────────────────────
+            # Allocates extra CPU during container startup so ADK and the
+            # Supabase client initialise faster before the first request arrives.
             run.googleapis.com/startup-cpu-boost: "true"
 
         spec:
-          # Cloud Run service identity — must have roles/secretmanager.secretAccessor
-          serviceAccountName: {{ properties['serviceAccountName'] }}
+          # Service account — must have roles/secretmanager.secretAccessor
+          # on each secret and roles/aiplatform.user for Vertex AI embeddings.
+          serviceAccountName: {{ properties['serviceAccount'] }}
 
-          # Maximum duration a single WebSocket connection can stay open.
-          # Cloud Run treats WebSocket frames as one long HTTP request.
-          # 3600 s = 60 minutes (the Cloud Run maximum).
+          # Maximum duration of a single WebSocket connection.
+          # Cloud Run models each WebSocket session as one long HTTP request.
+          # 3600 s = 60 minutes, which is the Cloud Run platform maximum.
           timeoutSeconds: {{ properties.get('timeoutSeconds', 3600) }}
 
-          # Number of concurrent in-flight requests (WebSocket connections)
-          # the container will handle before Cloud Run spins a new instance.
-          containerConcurrency: {{ properties.get('concurrency', 1000) }}
+          # Concurrent WebSocket connections handled per instance before Cloud
+          # Run scales horizontally.  80 matches the cloudbuild.yaml deploy flag.
+          containerConcurrency: 80
 
           containers:
           - image: {{ properties['image'] }}
 
             ports:
-            # http1 (not h2c) forces HTTP/1.1 end-to-end, which is required for
-            # the WebSocket Upgrade handshake.  HTTP/2 end-to-end is incompatible
-            # with WebSockets and must be disabled (--no-http2 in gcloud CLI).
+            # http1 forces HTTP/1.1 end-to-end.  The WebSocket Upgrade handshake
+            # requires HTTP/1.1; HTTP/2 multiplexing is incompatible with
+            # WebSockets and must NOT be used (equivalent to --no-http2).
             - name: http1
               containerPort: 8080
 
             env:
-            # Non-secret runtime config values
+            # Non-sensitive runtime configuration
             - name: GOOGLE_CLOUD_LOCATION
-              value: "us-central1"
+              value: "{{ properties.get('region', 'us-central1') }}"
             - name: GOOGLE_GENAI_USE_VERTEXAI
               value: "FALSE"
             - name: WAFRIVET_LIVE_MODEL
               value: "gemini-2.0-flash-live-001"
 
-            # Secret references — each value is fetched from Secret Manager
-            # at container startup.  The Cloud Run SA needs secretAccessor
-            # on each secret individually (least-privilege).
-            {% for secret in properties.get('secrets', []) %}
-            - name: {{ secret['envName'] }}
+            # Secret Manager references — values are fetched at container start.
+            # The Cloud Run SA must have secretAccessor on each secret.
+            # Secrets are listed here as environment variable references so they
+            # never appear in plain text in logs or deployment manifests.
+            - name: GOOGLE_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ secret['secretName'] }}
+                  name: GOOGLE_API_KEY
                   key: latest
-            {% endfor %}
+            - name: SUPABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: SUPABASE_URL
+                  key: latest
+            - name: SUPABASE_SERVICE_ROLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: SUPABASE_SERVICE_ROLE_KEY
+                  key: latest
+            - name: PAYSTACK_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: PAYSTACK_SECRET_KEY
+                  key: latest
+            - name: GOOGLE_CLOUD_PROJECT
+              valueFrom:
+                secretKeyRef:
+                  name: GOOGLE_CLOUD_PROJECT
+                  key: latest
 
             resources:
               limits:
-                cpu: "2"
-                memory: "2Gi"
+                # Values come from field-vet-config.yaml properties.
+                # 1 CPU + 1Gi RAM is sufficient for FastAPI + ADK streaming
+                # at the concurrency=80 setting.
+                cpu: "{{ properties.get('cpu', '1') }}"
+                memory: "{{ properties.get('memory', '1Gi') }}"
 
-            # Startup probe: hit /health until the ADK runner is ready.
-            # Initial delay accounts for ADK + Supabase client warm-up on
-            # a cold-start instance.  Failure threshold * period gives
-            # {{ properties.get('startupInitialDelay', 10) + properties.get('startupFailureLimit', 5) * 10 }} s
-            # total budget before Cloud Run kills a hung container.
+            # ── Startup probe ─────────────────────────────────────────────────
+            # Polls /health until the ADK runner and Supabase client are ready.
+            # 10 s initial delay + 5 failures × 10 s period = 60 s cold-start budget.
             startupProbe:
               httpGet:
                 path: /health
                 port: 8080
-              initialDelaySeconds: {{ properties.get('startupInitialDelay', 10) }}
+              initialDelaySeconds: 10
               periodSeconds: 10
               timeoutSeconds: 5
-              failureThreshold: {{ properties.get('startupFailureLimit', 5) }}
+              failureThreshold: 5
 
-            # Liveness probe: detect hung or deadlocked sessions and restart
-            # the container without Cloud Run treating it as a bad deployment.
+            # ── Liveness probe ────────────────────────────────────────────────
+            # Detects hung or deadlocked containers every 30 s and restarts
+            # them without Cloud Run treating the event as a bad deployment.
             livenessProbe:
               httpGet:
                 path: /health
@@ -133,3 +176,26 @@ resources:
       traffic:
       - percent: 100
         latestRevision: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Resource 2 — IAM policy binding: grant allUsers roles/run.invoker
+#
+# This makes the Cloud Run service publicly accessible without requiring the
+# caller to present a GCP identity token.  Equivalent to the CLI flag
+# --allow-unauthenticated on gcloud run deploy.
+#
+# The binding is a separate Deployment Manager resource so it can be updated
+# independently of the service spec (e.g. to restrict access later).
+# ─────────────────────────────────────────────────────────────────────────────
+- name: {{ properties['serviceName'] }}-invoker-binding
+  type: gcp-types/run-v1:projects.locations.services.setIamPolicy
+  properties:
+    resource: projects/{{ env['project'] }}/locations/{{ properties.get('region', 'us-central1') }}/services/{{ properties['serviceName'] }}
+    policy:
+      bindings:
+        - role: roles/run.invoker
+          members:
+            - allUsers
+  metadata:
+    dependsOn:
+      - {{ properties['serviceName'] }}
