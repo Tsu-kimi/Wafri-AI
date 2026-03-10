@@ -77,7 +77,7 @@ steps:
   # Secrets are bound from Secret Manager using --set-secrets so they NEVER
   # appear in build logs or environment variable plain text.
   # ─────────────────────────────────────────────────────────────────────────
-  - id: cleanup-location-secret
+  - id: cleanup-legacy-config-secrets
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: gcloud
     args:
@@ -87,7 +87,7 @@ steps:
       - ${_SERVICE_NAME}
       - --region=${_REGION}
       - --project=$PROJECT_ID
-      - --remove-secrets=GOOGLE_CLOUD_LOCATION
+      - --remove-secrets=GOOGLE_CLOUD_LOCATION,GOOGLE_GENAI_USE_VERTEXAI,WAFRIVET_LIVE_MODEL
     waitFor:
       - push
 
@@ -134,7 +134,7 @@ steps:
       # Liveness probe: detect hung containers every 30 s and restart them.
       - --liveness-probe=httpGet.path=/health,httpGet.port=8080,periodSeconds=30,failureThreshold=3,timeoutSeconds=5
     waitFor:
-      - cleanup-location-secret
+      - cleanup-legacy-config-secrets
 
   # ─────────────────────────────────────────────────────────────────────────
   # STEP 4 — Health check loop
