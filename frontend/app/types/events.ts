@@ -179,6 +179,14 @@ export interface ModelErrorEvent {
   message: string;
 }
 
+/**
+ * Sent by the bridge immediately before AUDIO_FLUSH when a barge-in occurs.
+ * The frontend only needs to acknowledge it; AUDIO_FLUSH handles the queue.
+ */
+export interface InterruptedEvent {
+  type: 'interrupted';
+}
+
 /** Discriminated union of every server → client JSON event. */
 export type ServerEvent =
   | AudioFlushEvent
@@ -189,7 +197,8 @@ export type ServerEvent =
   | CheckoutLinkEvent
   | LocationConfirmedEvent
   | ToolErrorEvent
-  | ModelErrorEvent;
+  | ModelErrorEvent
+  | InterruptedEvent;
 
 // ── Client → Server JSON messages ─────────────────────────────────────────────
 // Binary PCM audio frames are sent as ArrayBuffer — not typed here.
