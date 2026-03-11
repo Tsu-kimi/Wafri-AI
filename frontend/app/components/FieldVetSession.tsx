@@ -58,7 +58,6 @@ export function FieldVetSession() {
     cartTotal,
     checkoutUrl,
     confirmedLocation,
-    transcripts,
     isAgentSpeaking,
     lastError,
     sendAudio,
@@ -66,7 +65,6 @@ export function FieldVetSession() {
     sendText,
     sendInterrupt,
     flushAudio,
-    sendSessionContext,
     resumeContext,
   } = useWebSocketContext();
 
@@ -78,17 +76,12 @@ export function FieldVetSession() {
   } = useGeolocation();
 
   /**
-   * Auto-send detected state to the agent once — fires update_location which
-   * returns LOCATION_CONFIRMED. Only sends if we have a state and have not
-   * already sent or confirmed.
+   * Optimistic local location state — set immediately when the user confirms
+   * via the LocationBanner so the UI responds instantly without waiting for
+   * the backend LOCATION_CONFIRMED round-trip.
    */
-  const locationSentRef = useRef(false);
-  useEffect(() => {
-    if (detectedState && !confirmedLocation && !locationSentRef.current) {
-      locationSentRef.current = true;
-      sendText(`I am in ${detectedState}`);
-    }
-  }, [detectedState, confirmedLocation, sendText]);
+  const [localConfirmedLocation, setLocalConfirmedLocation] = useState<string | null>(null);
+  const effectiveConfirmedLocation = confirmedLocation || localConfirmedLocation;
 
   // ── Media pipeline ──────────────────────────────────────────────────────────
   const { videoRef, canvasRef, isCapturing, permissionError, activateMic } =
@@ -126,13 +119,14 @@ export function FieldVetSession() {
   }, [cartTotal, cartItems.length]);
 
   // ── Location banner manual-deny state ──────────────────────────────────────
-  // After auto-send, briefly show a "pending" state in the banner; after
-  // LOCATION_CONFIRMED the banner disappears entirely.
+  // Optimistically dismiss the banner immediately on confirm, then send the
+  // location message so the agent can call update_location in the background.
   const handleLocationConfirm = useCallback(
     (state: string) => {
-      sendSessionContext(state);
+      setLocalConfirmedLocation(state);
+      sendText(`My location is ${state}`);
     },
-    [sendSessionContext],
+    [sendText],
   );
 
   // ── Voice-fallback text input (accessible alternative to mic) ──────────────
@@ -194,6 +188,7 @@ export function FieldVetSession() {
 
       {/* ── Interrupt button — centered, only when AI is speaking (z=70) ─ */}
       {isAgentSpeaking && (
+
         <div
           style={{
             position: 'absolute',
@@ -211,59 +206,7 @@ export function FieldVetSession() {
         </div>
       )}
 
-      {/* ── Transcript strip — semi-transparent behind top bar (z=20) ──── */}
-      {transcripts.length > 0 && (
-        <div
-          role="log"
-          aria-live="polite"
-          aria-label="Conversation transcript"
-          style={{
-            position: 'absolute',
-            top: 'calc(40px + var(--spacing-safe-top))',
-            left: '16px',
-            right: '16px',
-            maxHeight: '25vh',
-            overflowY: 'auto',
-            zIndex: 20,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '4px',
-            pointerEvents: 'none',
-          }}
-        >
-          {transcripts.slice(-4).map((t, i) => (
-            <div
-              key={i}
-              style={{
-                background:
-                  t.author === 'user'
-                    ? 'rgba(28, 37, 53, 0.88)'
-                    : 'rgba(46, 160, 67, 0.15)',
-                borderLeft: `3px solid ${t.author === 'user' ? '#58a6ff' : '#2ea043'}`,
-                borderRadius: '0 8px 8px 0',
-                padding: '6px 10px',
-                backdropFilter: 'blur(8px)',
-              }}
-            >
-              <p
-                className="selectable"
-                style={{
-                  fontSize: '13px',
-                  color: t.author === 'user' ? '#e6edf3' : '#3fb950',
-                  lineHeight: 1.45,
-                  margin: 0,
-                  textShadow: '0 1px 3px rgba(0,0,0,0.7)',
-                }}
-              >
-                <strong style={{ opacity: 0.7 }}>
-                  {t.author === 'user' ? 'You' : 'AI'}:{' '}
-                </strong>
-                {t.text}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
+
 
       {/* ── Error notification bar ──────────────────────────────────────── */}
       {lastError && (
@@ -339,31 +282,17 @@ export function FieldVetSession() {
         </div>
       )}
 
-      {/* ── Location banner — bottom sheet (z=55) ───────────────────────── */}
-      {!confirmedLocation && (
-        <LocationBanner
-          detectedState={detectedState}
-          confirmedLocation={confirmedLocation}
-          hasGPSError={hasGPSError}
-          isLoading={geoLoading}
-          onConfirm={handleLocationConfirm}
-          onDeny={() => {
-            /* Deny is handled internally in LocationBanner — switches to manual input */
-          }}
-        />
-      )}
-
-      {/* ── Confirmed location pill (rendered by LocationBanner when set) ─ */}
-      {confirmedLocation && (
-        <LocationBanner
-          detectedState={detectedState}
-          confirmedLocation={confirmedLocation}
-          hasGPSError={hasGPSError}
-          isLoading={false}
-          onConfirm={handleLocationConfirm}
-          onDeny={() => {}}
-        />
-      )}
+      {/* ── Location banner — bottom sheet until confirmed (z=55) ─────── */}
+      <LocationBanner
+        detectedState={detectedState}
+        confirmedLocation={effectiveConfirmedLocation}
+        hasGPSError={hasGPSError}
+        isLoading={geoLoading}
+        onConfirm={handleLocationConfirm}
+        onDeny={() => {
+          /* Deny is handled internally in LocationBanner — switches to manual input */
+        }}
+      />
 
       {/* ── Voice-fallback text input — accessible typed interaction (z=25) */}
       {isCapturing && (

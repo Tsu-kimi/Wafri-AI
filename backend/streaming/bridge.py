@@ -64,7 +64,6 @@ from backend.streaming.events import (
     location_confirmed_event,
     products_recommended_event,
     tool_error_event,
-    transcription_event,
     turn_complete_event,
 )
 
@@ -261,29 +260,6 @@ async def run_bridge(
                 # ── While interrupted: discard content events ────────────
                 if is_interrupted:
                     continue
-
-                # ── Priority 4: Transcription ────────────────────────────
-                input_tr = getattr(event, "input_transcription", None)
-                if input_tr:
-                    text_val = input_tr.text if hasattr(input_tr, "text") else str(input_tr)
-                    is_final = not getattr(input_tr, "is_partial", False)
-                    await websocket.send_json(
-                        transcription_event(text=text_val, author="user", is_final=is_final)
-                    )
-                    _log("debug", "input transcription", "TRANSCRIPTION_IN")
-
-                output_tr = getattr(event, "output_transcription", None)
-                if output_tr:
-                    text_val = output_tr.text if hasattr(output_tr, "text") else str(output_tr)
-                    is_final = not getattr(output_tr, "is_partial", False)
-                    await websocket.send_json(
-                        transcription_event(
-                            text=text_val,
-                            author=event.author or "agent",
-                            is_final=is_final,
-                        )
-                    )
-                    _log("debug", "output transcription", "TRANSCRIPTION_OUT")
 
                 # ── Priority 5: Audio inline_data ────────────────────────
                 if event.content and event.content.parts:

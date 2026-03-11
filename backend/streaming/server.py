@@ -134,8 +134,6 @@ def _build_run_config() -> RunConfig:
                 )
             )
         ),
-        input_audio_transcription=types.AudioTranscriptionConfig(),
-        output_audio_transcription=types.AudioTranscriptionConfig(),
     )
 
 
