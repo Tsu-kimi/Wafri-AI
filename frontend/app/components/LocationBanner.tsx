@@ -173,8 +173,8 @@ export function LocationBanner({
             }}
           >
             {hasGPSError
-              ? '📍 GPS unavailable — enter your state'
-              : '📍 Enter your Nigerian state'}
+              ? 'GPS unavailable — enter your state'
+              : 'Enter your Nigerian state'}
           </p>
           <p
             style={{
@@ -256,7 +256,7 @@ export function LocationBanner({
               marginBottom: '6px',
             }}
           >
-            📍 Detected location
+            Detected location
           </p>
           <p
             style={{

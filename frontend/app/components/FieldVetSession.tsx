@@ -35,6 +35,7 @@ import React, {
 } from 'react';
 
 import { useWebSocketContext } from './WebSocketProvider';
+import { Notification, CloseSquare } from 'iconsax-react';
 import { useMediaPipeline }   from '@/app/hooks/useMediaPipeline';
 import { useGeolocation }     from '@/app/hooks/useGeolocation';
 
@@ -112,6 +113,22 @@ export function FieldVetSession() {
    */
   const [localConfirmedLocation, setLocalConfirmedLocation] = useState<string | null>(null);
   const effectiveConfirmedLocation = confirmedLocation || localConfirmedLocation;
+
+  // ── Error Logging & Notifications ───────────────────────────────────────────
+  const [errorLog, setErrorLog] = useState<{id: number, message: string, time: Date}[]>([]);
+  const [toastError, setToastError] = useState<string | null>(null);
+  const [showErrorLog, setShowErrorLog] = useState(false);
+
+  useEffect(() => {
+    if (lastError) {
+      setToastError(lastError);
+      setErrorLog((prev) => [...prev, { id: Date.now(), message: lastError, time: new Date() }]);
+      const timer = setTimeout(() => {
+        setToastError(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [lastError]);
 
   // ── Media pipeline ──────────────────────────────────────────────────────────
   const { videoRef, canvasRef, isCapturing, permissionError, activateMic } =
@@ -243,29 +260,121 @@ export function FieldVetSession() {
 
 
 
-      {/* ── Error notification bar ──────────────────────────────────────── */}
-      {lastError && (
+      {/* ── Top Right Action Buttons (Notification) ───────────────────────── */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 'calc(14px + 40px + 10px + var(--spacing-safe-top))', // Under Globe (14px top + 40px globe + 10px gap)
+          right: '16px', // Align with the Globe on the right edge
+          zIndex: 65,
+        }}
+      >
+        <button
+          onClick={() => setShowErrorLog(true)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            background: errorLog.length > 0 ? 'color-mix(in srgb, var(--color-error) 22%, transparent)' : 'color-mix(in srgb, var(--color-surface-2) 60%, transparent)',
+            border: `1px solid ${errorLog.length > 0 ? 'var(--color-error)' : 'var(--color-border)'}`,
+            backdropFilter: 'blur(8px)',
+            pointerEvents: 'auto',
+            transition: 'background 0.2s',
+            cursor: 'pointer',
+          }}
+          aria-label="View error log"
+        >
+          <Notification variant="Linear" color={errorLog.length > 0 ? 'var(--color-error)' : 'var(--color-white)'} size={24} />
+        </button>
+      </div>
+
+      {/* ── Error Log Panel ─────────────────────────────────────────────── */}
+      {showErrorLog && (
         <div
-          role="alert"
           style={{
             position: 'absolute',
-            top: 'calc(8px + var(--spacing-safe-top))',
-            left: '16px',
+            top: 'calc(64px + var(--spacing-safe-top))',
             right: '16px',
-            background: 'color-mix(in srgb, var(--color-error) 90%, transparent)',
-            borderRadius: '10px',
-            padding: '8px 14px',
-            fontSize: '12px',
-            fontWeight: 600,
-            color: 'var(--color-white)',
-            zIndex: 65,
-            textAlign: 'center',
-            backdropFilter: 'blur(6px)',
+            width: '320px',
+            maxHeight: '400px',
+            background: 'color-mix(in srgb, var(--color-surface) 90%, transparent)',
+            border: '1px solid var(--color-border)',
+            borderRadius: '16px',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            zIndex: 80,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            backdropFilter: 'blur(12px)',
+            overflowY: 'auto',
           }}
         >
-          {lastError}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ margin: 0, fontSize: '16px', color: 'var(--color-text)', fontFamily: 'var(--font-fraunces)' }}>Event Log</h3>
+            <button
+              onClick={() => setShowErrorLog(false)}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex' }}
+            >
+              <CloseSquare size={24} color="var(--color-text-muted)" />
+            </button>
+          </div>
+          {errorLog.length === 0 ? (
+            <p style={{ color: 'var(--color-text-muted)', fontSize: '14px', margin: 0 }}>No errors reported.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {errorLog.slice().reverse().map((err) => (
+                <div key={err.id} style={{ background: 'color-mix(in srgb, var(--color-error) 12%, transparent)', padding: '10px', borderRadius: '8px', borderLeft: '3px solid var(--color-error)' }}>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--color-text)' }}>{err.message}</p>
+                  <p style={{ margin: '4px 0 0', fontSize: '10px', color: 'var(--color-text-muted)' }}>{err.time.toLocaleTimeString()}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
+
+      {/* ── Error notification bar (Dynamic Island) ────────────────────── */}
+      <div
+        role="alert"
+        style={{
+          position: 'absolute',
+          top: 'calc(14px + var(--spacing-safe-top))',
+          left: '50%',
+          transform: `translateX(-50%) translateY(${toastError ? '0' : '-200%'}) scale(${toastError ? '1' : '0.85'})`,
+          opacity: toastError ? 1 : 0,
+          background: 'color-mix(in srgb, var(--color-surface) 90%, transparent)',
+          border: '1px solid var(--color-border)',
+          borderRadius: '999px',
+          padding: '8px 18px',
+          fontSize: '13px',
+          fontWeight: 700,
+          color: 'var(--color-primary)',
+          zIndex: 100, // Highest z-index to appear over everything like Dynamic Island
+          textAlign: 'center',
+          backdropFilter: 'blur(12px)',
+          boxShadow: '0 8px 32px color-mix(in srgb, var(--color-primary) 20%, transparent)',
+          transition: 'all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          pointerEvents: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          maxWidth: '85vw',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center' }}>
+          <Notification variant="Bold" color="var(--color-primary)" size={16} />
+        </span>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {toastError || 'No error'}
+        </span>
+      </div>
 
       {/* ── Clinic card row — slides up from bottom on CLINICS_FOUND (z=28) */}
       {(clinics.length > 0 || clinicsFallbackMessage) && (
