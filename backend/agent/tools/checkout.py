@@ -109,6 +109,8 @@ def _call_paystack(
         headers={
             "Authorization": f"Bearer {secret_key}",
             "Content-Type": "application/json",
+            "User-Agent": "WafriVet-FieldVet/1.0",
+            "Accept": "application/json",
         },
         method="POST",
     )
