@@ -15,6 +15,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
+import { Box } from 'iconsax-react';
 import type { Product } from '@/app/types/events';
 
 export interface ProductCardRowProps {
@@ -99,7 +100,7 @@ function ProductCard({ product, isActive, onTap, onAdd }: ProductCardProps) {
             }}
             aria-hidden
           >
-            💊
+            <Box variant="Bulk" size={32} color="var(--color-text-muted)" />
           </div>
         )}
       </div>

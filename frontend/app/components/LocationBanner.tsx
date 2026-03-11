@@ -17,7 +17,7 @@
  */
 
 import React, { useState, useId } from 'react';
-import { Location } from 'iconsax-react';
+import { Location, Global } from 'iconsax-react';
 
 
 export interface LocationBannerProps {
@@ -45,41 +45,73 @@ export function LocationBanner({
   const [manualState, setManualState] = useState('');
   const inputId = useId();
 
-  // ── Confirmed pill ────────────────────────────────────────────────────────
+  // ── Confirmed pill & Globe Link ───────────────────────────────────────────
   if (confirmedLocation) {
     return (
-      <div
-        role="status"
-        aria-live="polite"
-        style={{
-          position: 'absolute',
-          bottom: 'calc(14px + var(--spacing-safe-bottom))',
-          left: '16px',
-          background: 'color-mix(in srgb, var(--color-primary) 22%, transparent)',
-          border: '1px solid var(--color-primary)',
-          borderRadius: '24px',
-          padding: '7px 14px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          zIndex: 55,
-          animation: 'fade-in 0.4s ease',
-          backdropFilter: 'blur(8px)',
-        }}
-      >
-        <span style={{ display: 'flex', alignItems: 'center' }}>
-          <Location variant="Bold" color="var(--color-primary)" size={16} />
-        </span>
-        <span
+      <div style={{
+        position: 'absolute',
+        top: 'calc(14px + var(--spacing-safe-top))',
+        left: '16px',
+        right: '16px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        zIndex: 55,
+        pointerEvents: 'none', // Allow clicks to pass through the container
+      }}>
+        {/* Left Side: Location Pill */}
+        <div
+          role="status"
+          aria-live="polite"
           style={{
-            fontSize: '13px',
-            fontWeight: 700,
-            color: 'var(--color-primary)',
-            textShadow: '0 1px 3px color-mix(in srgb, var(--color-bg) 60%, transparent)',
+            background: 'color-mix(in srgb, var(--color-primary) 22%, transparent)',
+            border: '1px solid var(--color-white)',
+            borderRadius: '24px',
+            padding: '7px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            animation: 'fade-in 0.4s ease',
+            backdropFilter: 'blur(8px)',
+            pointerEvents: 'auto', // Re-enable clicks for the pill itself
           }}
         >
-          {confirmedLocation}
-        </span>
+          <span style={{ display: 'flex', alignItems: 'center' }}>
+            <Location variant="Bold" color="var(--color-white)" size={16} />
+          </span>
+          <span
+            style={{
+              fontSize: '13px',
+              fontWeight: 700,
+              color: 'var(--color-white)',
+            }}
+          >
+            {confirmedLocation}
+          </span>
+        </div>
+
+        {/* Right Side: Website Link */}
+        <a
+          href="https://wafrivet.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            background: 'color-mix(in srgb, var(--color-surface-2) 60%, transparent)',
+            border: '1px solid var(--color-border)',
+            backdropFilter: 'blur(8px)',
+            pointerEvents: 'auto', // Re-enable clicks for the link
+            transition: 'background 0.2s',
+          }}
+          aria-label="Visit Wafrivet website"
+        >
+          <Global variant="Linear" color="var(--color-white)" size={24} />
+        </a>
       </div>
     );
   }
