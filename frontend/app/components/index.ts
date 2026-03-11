@@ -12,6 +12,9 @@ export type { LocationBannerProps } from './LocationBanner';
 export { ProductCardRow } from './ProductCardRow';
 export type { ProductCardRowProps } from './ProductCardRow';
 
+export { ClinicCardRow } from './ClinicCardRow';
+export type { ClinicCardRowProps } from './ClinicCardRow';
+
 export { CartBadge } from './CartBadge';
 export type { CartBadgeProps } from './CartBadge';
 

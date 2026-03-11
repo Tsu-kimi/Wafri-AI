@@ -56,6 +56,11 @@ declare module '@paystack/inline-js' {
     cancelTransaction(transactionId: number): void;
   }
 
-  const PaystackPop: IPaystackPop;
+  /** v2 — must be instantiated: `new PaystackPop()` */
+  class PaystackPop implements IPaystackPop {
+    newTransaction(options: PaystackTransactionOptions): void;
+    resumeTransaction(accessCode: string): void;
+    cancelTransaction(transactionId: number): void;
+  }
   export default PaystackPop;
 }

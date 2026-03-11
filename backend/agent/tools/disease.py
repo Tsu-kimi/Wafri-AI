@@ -145,12 +145,15 @@ def _cosine_similarity_query(query_vec: list[float]) -> list[dict[str, Any]]:
     # standard pgvector literal format: '[0.1,0.2,...]'
     vec_literal = "[" + ",".join(str(round(v, 8)) for v in query_vec) + "]"
 
-    # The match_disease function signature (migration 015):
-    #   match_disease(symptom_embedding vector, match_count int, match_threshold float8)
+    # The match_disease function signature (migration fix_match_disease_parameter_ambiguity):
+    #   match_disease(query_embedding vector, match_count int, match_threshold float8)
+    # NOTE: parameter was renamed from 'symptom_embedding' to 'query_embedding' to prevent
+    # PostgreSQL from shadowing the parameter with the same-named table column inside the
+    # SQL function body, which previously caused every row to score similarity=1.0.
     result = db.rpc(
         "match_disease",
         {
-            "symptom_embedding": vec_literal,
+            "query_embedding": vec_literal,
             "match_count": _TOP_K,
             "match_threshold": 0.5,  # Low floor so we always get results even for edge cases
         },

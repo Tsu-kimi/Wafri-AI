@@ -32,6 +32,7 @@ T_PRODUCTS_RECOMMENDED = "PRODUCTS_RECOMMENDED"
 T_CART_UPDATED         = "CART_UPDATED"
 T_CHECKOUT_LINK        = "CHECKOUT_LINK"
 T_LOCATION_CONFIRMED   = "LOCATION_CONFIRMED"
+T_CLINICS_FOUND        = "CLINICS_FOUND"
 T_TOOL_ERROR           = "TOOL_ERROR"
 
 
@@ -113,6 +114,30 @@ def location_confirmed_event(state: str, message: str = "") -> dict:
         "type":    T_LOCATION_CONFIRMED,
         "state":   state,
         "message": message,
+    }
+
+
+def clinics_found_event(
+    clinics: List[dict],
+    radius_m: int,
+    fallback_message: Optional[str] = None,
+    message: str = "",
+) -> dict:
+    """
+    Args:
+        clinics          — list of clinic dicts from find_nearest_vet_clinic:
+                           [{name, address, phone, openNow, googleMapsUri, lat, lon}]
+        radius_m         — the effective search radius used, in metres
+        fallback_message — non-None when no clinics were found within 50 km;
+                           Fatima speaks this and the frontend shows a fallback card
+        message          — optional human-readable summary from the tool
+    """
+    return {
+        "type":             T_CLINICS_FOUND,
+        "clinics":          clinics,
+        "radius_m":         radius_m,
+        "fallback_message": fallback_message,
+        "message":          message,
     }
 
 

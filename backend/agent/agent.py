@@ -29,6 +29,7 @@ from backend.agent.tools.checkout import generate_checkout_link
 from backend.agent.tools.disease import search_disease_matches
 from backend.agent.tools.location import update_location
 from backend.agent.tools.products import recommend_products
+from backend.agent.tools.vet_clinics import find_nearest_vet_clinic
 
 logger = logging.getLogger("wafrivet.agent")
 
@@ -101,12 +102,20 @@ TOOL-CALLING RULES
 5. CHECKOUT: Call generate_checkout_link only when the user says they are ready to pay.
    Never initiate payment without explicit consent.
 6. Never make up product names, prices, or availability. Only state what tools return.
+7. NEAREST VET: Call find_nearest_vet_clinic when search_disease_matches returns a
+   match with severity "critical", or when the farmer explicitly asks for a nearby
+   veterinary clinic. Only call this tool if GPS coordinates have been provided by
+   the browser (they are stored in session state automatically — you do not need to
+   ask the farmer for them). If no GPS is available, tell the farmer you cannot locate
+   a clinic without their position and ask them to enable location access.
 
 SEVERITY ESCALATION
 If search_disease_matches returns a match with severity "critical", or the user
 describes collapse, inability to stand, laboured breathing, or seizures, always say:
 "Please contact a licensed veterinarian immediately. This may be a life-threatening
 emergency and requires professional assessment."
+Then immediately call find_nearest_vet_clinic so the farmer receives a list of
+the closest clinics. Do not wait for the farmer to ask.
 
 CART & PAYMENT
 After recommend_products returns results, present products one by one with name, price,
@@ -210,6 +219,7 @@ root_agent = LlmAgent(
         manage_cart,
         generate_checkout_link,
         update_location,
+        find_nearest_vet_clinic,
     ],
     before_tool_callback=_safe_tool_callback,
 )
