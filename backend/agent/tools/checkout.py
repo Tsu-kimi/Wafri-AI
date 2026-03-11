@@ -69,7 +69,7 @@ def _phone_to_email(phone: str) -> str:
     transactions can be looked up by reference without a real email address.
     """
     digits = re.sub(r"\D", "", phone)
-    return f"{digits}@wafrivet.placeholder"
+    return f"{digits}@wafrivet.com"
 
 
 def _call_paystack(
