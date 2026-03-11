@@ -302,6 +302,12 @@ export function useWebSocketSession({
           dispatch({ type: 'MODEL_ERROR', code: raw.code, message: raw.message });
           break;
 
+        // Backend sends this lowercase event immediately before AUDIO_FLUSH
+        // during a barge-in. AUDIO_FLUSH handles the audio queue; this just
+        // acknowledges the interruption began.
+        case 'interrupted':
+          break;
+
         default: {
           // Narrow raw to an object with a `type` field for the warning.
           const unhandled = raw as { type: string };
