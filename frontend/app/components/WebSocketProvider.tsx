@@ -69,6 +69,11 @@ export interface WebSocketContextValue extends SessionState {
    */
   sendSessionContext: (farmerState: string) => void;
   /**
+   * Send GPS coordinates to the backend to populate session state.
+   * Call once after geolocation resolves; safe to call on every GPS update.
+   */
+  sendLocationData: (lat: number, lon: number, state?: string | null, lga?: string | null) => void;
+  /**
    * Resume the Web Audio API context after a user gesture.
    * Wire to the first meaningful tap/click on the page shell before audio arrives.
    */
@@ -134,6 +139,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     sendText,
     sendInterrupt,
     sendSessionContext,
+    sendLocationData,
   } = useWebSocketSession({
     wsBaseUrl,
     userId:    ids?.userId    ?? '',
@@ -157,6 +163,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       // without waiting for the server AUDIO_FLUSH event.
       flushAudio:      flush,
       sendSessionContext,
+      sendLocationData,
       resumeContext,
     }),
     [
@@ -168,6 +175,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       sendInterrupt,
       flush,
       sendSessionContext,
+      sendLocationData,
       resumeContext,
     ],
   );

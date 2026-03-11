@@ -41,6 +41,8 @@ export const WT = {
   CHECKOUT_LINK:         'CHECKOUT_LINK',
   /** The ADK update_location tool fired: state confirmed. */
   LOCATION_CONFIRMED:    'LOCATION_CONFIRMED',
+  /** The ADK find_nearest_vet_clinic tool fired: render clinic cards. */
+  CLINICS_FOUND:         'CLINICS_FOUND',
   /** An ADK tool returned a non-success status. */
   TOOL_ERROR:            'TOOL_ERROR',
   /** Terminal Gemini model error (safety, block, token limit, cancel). */
@@ -53,6 +55,8 @@ export const WT = {
   TEXT:      'TEXT',
   /** Signal the backend to interrupt the current AI response turn. */
   INTERRUPT: 'INTERRUPT',
+  /** Browser GPS coordinates sent once geolocation resolves. */
+  LOCATION_DATA: 'LOCATION_DATA',
 } as const;
 
 export type WTKey = keyof typeof WT;
@@ -82,6 +86,22 @@ export interface Product {
   image_url: string;
   description: string;
   dosage_notes: string;
+}
+
+/**
+ * A veterinary clinic returned by the find_nearest_vet_clinic ADK tool.
+ * Matches the _normalise_clinic() shape in backend/agent/tools/vet_clinics.py.
+ */
+export interface Clinic {
+  name: string;
+  address: string;
+  phone: string | null;
+  /** True if the clinic is currently open, null if hours data is unavailable. */
+  openNow: boolean | null;
+  /** Direct Google Maps link for in-app navigation. */
+  googleMapsUri: string | null;
+  lat: number | null;
+  lon: number | null;
 }
 
 /**
@@ -161,6 +181,23 @@ export interface LocationConfirmedEvent {
   message: string;
 }
 
+/**
+ * Nearest vet clinic results from find_nearest_vet_clinic ADK tool.
+ * Render as ClinicCardRow below the product strip.
+ */
+export interface ClinicsFoundEvent {
+  type: 'CLINICS_FOUND';
+  clinics: Clinic[];
+  /** Effective search radius in metres used for this response. */
+  radius_m: number;
+  /**
+   * Non-null when no clinics were found within 50 km.
+   * Fatima speaks this aloud and it is displayed in the card row.
+   */
+  fallback_message: string | null;
+  message: string;
+}
+
 /** An ADK tool returned a non-success status; agent will narrate the error. */
 export interface ToolErrorEvent {
   type: 'TOOL_ERROR';
@@ -196,6 +233,7 @@ export type ServerEvent =
   | CartUpdatedEvent
   | CheckoutLinkEvent
   | LocationConfirmedEvent
+  | ClinicsFoundEvent
   | ToolErrorEvent
   | ModelErrorEvent
   | InterruptedEvent;
@@ -228,8 +266,23 @@ export interface InterruptMessage {
   type: 'INTERRUPT';
 }
 
+/**
+ * GPS coordinates captured by the browser's Geolocation API.
+ * Sent once after connection to write farmer_lat / farmer_lon into the
+ * ADK session state so find_nearest_vet_clinic can use them.
+ */
+export interface LocationDataMessage {
+  type: 'LOCATION_DATA';
+  lat: number;
+  lon: number;
+  /** LGA (Local Government Area) resolved by the geocode API route. */
+  lga?: string;
+  /** Canonical Nigerian state name resolved by the geocode API route. */
+  state?: string;
+}
+
 /** Discriminated union of all client → server JSON messages. */
-export type ClientMessage = ImageMessage | TextMessage | InterruptMessage;
+export type ClientMessage = ImageMessage | TextMessage | InterruptMessage | LocationDataMessage;
 
 // ── Type guard ────────────────────────────────────────────────────────────────
 

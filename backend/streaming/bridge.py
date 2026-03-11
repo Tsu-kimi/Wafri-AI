@@ -61,6 +61,7 @@ from backend.streaming.events import (
     audio_flush_event,
     cart_updated_event,
     checkout_link_event,
+    clinics_found_event,
     location_confirmed_event,
     products_recommended_event,
     tool_error_event,
@@ -187,6 +188,32 @@ async def run_bridge(
                             types.Blob(mime_type=_AUDIO_MIME, data=silence_100ms)
                         )
                         _log("info", "user interrupt – silence barge-in sent", "INTERRUPT")
+
+                    elif msg_type == "LOCATION_DATA":
+                        # Browser sends GPS coordinates once geolocation resolves.
+                        # Write them into the ADK in-memory session state so the
+                        # find_nearest_vet_clinic tool can read them via tool_context.state.
+                        lat = payload.get("lat")
+                        lon = payload.get("lon")
+                        if lat is not None and lon is not None:
+                            try:
+                                session = await session_service.get_session(
+                                    app_name=runner.app_name,
+                                    user_id=user_id,
+                                    session_id=session_id,
+                                )
+                                if session:
+                                    session.state["farmer_lat"] = float(lat)
+                                    session.state["farmer_lon"] = float(lon)
+                                    lga_val = payload.get("lga")
+                                    if lga_val:
+                                        session.state["farmer_lga"] = str(lga_val)
+                                    state_val = payload.get("state")
+                                    if state_val and not session.state.get("farmer_state"):
+                                        session.state["farmer_state"] = str(state_val)
+                                    _log("info", f"GPS stored: lat={lat}, lon={lon}", "LOCATION_DATA")
+                            except Exception as exc:
+                                _log("warning", f"Failed to store GPS in session: {exc}", "LOCATION_DATA_ERR")
 
                     else:
                         _log("warning", f"unknown message type: {msg_type!r}", "UNKNOWN_MSG")
@@ -435,6 +462,20 @@ async def _route_tool_response(
                 }
             )
             log_fn("info", f"disease search returned {len(matches)} matches", "DISEASE_SEARCH")
+
+        elif tool_name == "find_nearest_vet_clinic":
+            clinics = data.get("clinics", [])
+            radius_m = data.get("radius_m", 0)
+            fallback_message = data.get("fallback_message")
+            await websocket.send_json(
+                clinics_found_event(
+                    clinics=clinics,
+                    radius_m=radius_m,
+                    fallback_message=fallback_message,
+                    message=message,
+                )
+            )
+            log_fn("info", f"CLINICS_FOUND ({len(clinics)} clinics, radius={radius_m}m)", "CLINICS_FOUND")
 
         else:
             log_fn("warning", f"unrecognised tool: {tool_name!r}", "UNKNOWN_TOOL")

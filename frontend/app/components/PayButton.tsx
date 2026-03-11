@@ -48,11 +48,13 @@ export function PayButton({ cartTotal }: PayButtonProps) {
     try {
       // Dynamic import prevents the Paystack bundle (which accesses `window`
       // at module-init time) from executing during SSR prerendering.
+      // v2 exports a class — instantiate before calling newTransaction.
       const { default: PaystackPop } = await import('@paystack/inline-js');
-      PaystackPop.newTransaction({
+      const popup = new PaystackPop();
+      popup.newTransaction({
         key: paystackKey,
         // Demo email placeholder — Paystack requires an email field.
-        email: 'farmer@wafrivet.app',
+        email: 'farmer@wafrivet.com',
         amount: Math.round(cartTotal * 100), // NGN → kobo
         currency: 'NGN',
         metadata: { source: 'wafrivet-field-vet', version: '1.0' },
@@ -64,12 +66,12 @@ export function PayButton({ cartTotal }: PayButtonProps) {
           // User dismissed popup without paying.
           setIsLoading(false);
         },
-        onError: (err) => {
+        onError: (err: { message: string }) => {
           console.error('[PayButton] Paystack error:', err.message);
           setIsLoading(false);
         },
       });
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('[PayButton] Failed to load Paystack:', err);
       setIsLoading(false);
     }

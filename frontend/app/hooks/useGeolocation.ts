@@ -3,39 +3,53 @@
 /**
  * app/hooks/useGeolocation.ts
  *
- * Requests browser Geolocation once per component lifetime, reverse-geocodes
- * the result via Nominatim, and returns the detected Nigerian state name.
+ * Requests browser Geolocation once per component lifetime, then resolves
+ * the coordinates into a structured Nigerian address by calling the server-side
+ * /api/geocode route (which calls Google Geocoding API with GOOGLE_MAPS_KEY).
  *
  * Design constraints:
- *   - Exactly one Geolocation call and one Nominatim request per session.
+ *   - Exactly one Geolocation call and one /api/geocode request per session.
  *     Do not retry on network failure — just set hasGPSError: true.
  *   - All three GeolocationPositionError codes are handled with user-readable
  *     messages (PERMISSION_DENIED=1, POSITION_UNAVAILABLE=2, TIMEOUT=3).
- *   - Nominatim network failure is silently absorbed: hasGPSError is set,
- *     no exception propagates.
+ *   - /api/geocode network failure is silently absorbed: hasGPSError is set,
+ *     no exception propagates to the caller.
+ *   - Raw GPS coordinates (lat, lon) are exposed so FieldVetSession can send
+ *     them to the backend via LOCATION_DATA for find_nearest_vet_clinic.
+ *   - GOOGLE_MAPS_KEY is NEVER accessed here — it lives only in the server-side
+ *     /api/geocode route.
  *
- * Expose: detectedState, hasGPSError, errorMessage, isLoading.
+ * Expose: detectedState, lga, lat, lon, formattedAddress,
+ *         hasGPSError, errorMessage, isLoading.
  */
 
 import { useState, useEffect } from 'react';
-import { reverseGeocode } from '@/app/lib/nominatim';
 
 export interface UseGeolocationReturn {
-  /** Raw Nominatim state string e.g. "Rivers State". Null until resolved. */
+  /** Resolved Nigerian state name e.g. "Rivers State". Null until resolved. */
   detectedState: string | null;
+  /** Nigerian LGA name e.g. "Port Harcourt". Null until resolved. */
+  lga: string | null;
+  /** Raw GPS latitude from the browser. Null until GPS resolves. */
+  lat: number | null;
+  /** Raw GPS longitude from the browser. Null until GPS resolves. */
+  lon: number | null;
+  /** Formatted address from the Geocoding API e.g. "Port Harcourt, Rivers, Nigeria". */
+  formattedAddress: string | null;
   /** True if any step (GPS or geocoding) failed. */
   hasGPSError: boolean;
   /** Human-readable error description, or null when no error has occurred. */
   errorMessage: string | null;
-  /** True while waiting for GPS hardware or the Nominatim response. */
+  /** True while waiting for GPS hardware or the /api/geocode response. */
   isLoading: boolean;
 }
 
 const GEO_OPTIONS: PositionOptions = {
   enableHighAccuracy: true,
-  timeout: 8_000,
-  /** Cache position for 60 s to avoid redundant hardware hits on re-mount. */
-  maximumAge: 60_000,
+  // Increased to 10 s per Phase 2 spec (was 8 s).
+  timeout: 10_000,
+  /** Cache position for 5 minutes — accuracy does not change within a session. */
+  maximumAge: 300_000,
 };
 
 const GPS_ERROR_MESSAGES: Readonly<Record<number, string>> = {
@@ -45,10 +59,14 @@ const GPS_ERROR_MESSAGES: Readonly<Record<number, string>> = {
 };
 
 export function useGeolocation(): UseGeolocationReturn {
-  const [detectedState, setDetectedState] = useState<string | null>(null);
-  const [hasGPSError,   setHasGPSError]   = useState(false);
-  const [errorMessage,  setErrorMessage]  = useState<string | null>(null);
-  const [isLoading,     setIsLoading]     = useState(false);
+  const [detectedState,    setDetectedState]    = useState<string | null>(null);
+  const [lga,              setLga]              = useState<string | null>(null);
+  const [lat,              setLat]              = useState<number | null>(null);
+  const [lon,              setLon]              = useState<number | null>(null);
+  const [formattedAddress, setFormattedAddress] = useState<string | null>(null);
+  const [hasGPSError,      setHasGPSError]      = useState(false);
+  const [errorMessage,     setErrorMessage]     = useState<string | null>(null);
+  const [isLoading,        setIsLoading]        = useState(false);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -65,20 +83,42 @@ export function useGeolocation(): UseGeolocationReturn {
       async (position: GeolocationPosition) => {
         const { latitude, longitude } = position.coords;
 
-        // Exactly one Nominatim request — no retry on network failure.
-        const state = await reverseGeocode(latitude, longitude);
+        // Store raw coordinates immediately — available to FieldVetSession
+        // even if the /api/geocode call fails.
+        setLat(latitude);
+        setLon(longitude);
 
-        setIsLoading(false);
+        // Call the server-side proxy; GOOGLE_MAPS_KEY never touches the browser.
+        try {
+          const resp = await fetch(
+            `/api/geocode?lat=${latitude}&lon=${longitude}`,
+          );
 
-        if (state) {
-          setDetectedState(state);
-        } else {
+          if (resp.ok) {
+            const data = await resp.json() as {
+              state: string;
+              lga: string | null;
+              formattedAddress: string;
+            };
+            setDetectedState(data.state);
+            setLga(data.lga ?? null);
+            setFormattedAddress(data.formattedAddress ?? null);
+          } else {
+            // /api/geocode returned a structured error — GPS still worked.
+            setHasGPSError(true);
+            setErrorMessage(
+              'Could not determine your Nigerian state from GPS. ' +
+              'Please say your state name.',
+            );
+          }
+        } catch {
           setHasGPSError(true);
           setErrorMessage(
-            'Could not determine your Nigerian state from GPS. ' +
-            'Please say your state name.',
+            'Could not reach the geocoding service. Please say your state name.',
           );
         }
+
+        setIsLoading(false);
       },
       (err: GeolocationPositionError) => {
         setIsLoading(false);
@@ -89,8 +129,17 @@ export function useGeolocation(): UseGeolocationReturn {
       },
       GEO_OPTIONS,
     );
-    // Empty dependency array: one geolocation + one Nominatim call per mount.
+    // Empty dependency array: one geolocation + one geocode call per mount.
   }, []);
 
-  return { detectedState, hasGPSError, errorMessage, isLoading };
+  return {
+    detectedState,
+    lga,
+    lat,
+    lon,
+    formattedAddress,
+    hasGPSError,
+    errorMessage,
+    isLoading,
+  };
 }

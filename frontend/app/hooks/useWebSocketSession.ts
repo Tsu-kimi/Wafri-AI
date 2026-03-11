@@ -22,6 +22,7 @@ import { useRef, useEffect, useCallback, useReducer } from 'react';
 import {
   isServerEvent,
   type CartItem,
+  type Clinic,
   type Product,
   type TranscriptionEvent,
 } from '@/app/types/events';
@@ -46,6 +47,10 @@ export interface SessionState {
   payment_reference: string | null;
   /** Canonical Nigerian state name confirmed by the backend update_location tool. */
   confirmedLocation: string | null;
+  /** Nearest vet clinics returned by find_nearest_vet_clinic (critical severity). */
+  clinics: Clinic[];
+  /** Non-null when no clinics were found within 50 km. */
+  clinicsFallbackMessage: string | null;
   /** Rolling window of the last 50 transcription events. */
   transcripts: TranscriptionEvent[];
   /**
@@ -83,6 +88,7 @@ type ReducerAction =
   | { type: 'CART_UPDATED'; items: CartItem[]; cart_total: number }
   | { type: 'CHECKOUT_LINK'; checkout_url: string; payment_reference: string }
   | { type: 'LOCATION_CONFIRMED'; state: string }
+  | { type: 'CLINICS_FOUND'; clinics: Clinic[]; clinicsFallbackMessage: string | null }
   | { type: 'TOOL_ERROR'; tool_name: string; error: string }
   | { type: 'MODEL_ERROR'; code: string; message: string };
 
@@ -94,6 +100,8 @@ const INITIAL_STATE: SessionState = {
   checkoutUrl: null,
   payment_reference: null,
   confirmedLocation: null,
+  clinics: [],
+  clinicsFallbackMessage: null,
   transcripts: [],
   isAgentSpeaking: false,
   lastError: null,
@@ -145,6 +153,13 @@ function sessionReducer(state: SessionState, action: ReducerAction): SessionStat
 
     case 'LOCATION_CONFIRMED':
       return { ...state, confirmedLocation: action.state };
+
+    case 'CLINICS_FOUND':
+      return {
+        ...state,
+        clinics: action.clinics,
+        clinicsFallbackMessage: action.clinicsFallbackMessage,
+      };
 
     case 'TOOL_ERROR':
       return {
@@ -290,6 +305,14 @@ export function useWebSocketSession({
           dispatch({ type: 'LOCATION_CONFIRMED', state: raw.state });
           break;
 
+        case 'CLINICS_FOUND':
+          dispatch({
+            type: 'CLINICS_FOUND',
+            clinics: raw.clinics,
+            clinicsFallbackMessage: raw.fallback_message,
+          });
+          break;
+
         case 'TOOL_ERROR':
           dispatch({
             type: 'TOOL_ERROR',
@@ -415,6 +438,23 @@ export function useWebSocketSession({
     }
   }, []);
 
+  /**
+   * Send GPS coordinates to the backend so the ADK session state is populated
+   * with farmer_lat / farmer_lon before find_nearest_vet_clinic is ever called.
+   * Safe to call multiple times — the backend only writes, never fails.
+   */
+  const sendLocationData = useCallback(
+    (lat: number, lon: number, state?: string | null, lga?: string | null) => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        const payload: Record<string, unknown> = { type: 'LOCATION_DATA', lat, lon };
+        if (state) payload.state = state;
+        if (lga)   payload.lga   = lga;
+        wsRef.current.send(JSON.stringify(payload));
+      }
+    },
+    [],
+  );
+
   return {
     state,
     sendAudioChunk,
@@ -422,5 +462,6 @@ export function useWebSocketSession({
     sendText,
     sendInterrupt,
     sendSessionContext,
+    sendLocationData,
   };
 }

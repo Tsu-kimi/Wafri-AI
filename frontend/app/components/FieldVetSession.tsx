@@ -41,6 +41,7 @@ import { useGeolocation }     from '@/app/hooks/useGeolocation';
 import { CameraView }       from './CameraView';
 import { LocationBanner }   from './LocationBanner';
 import { ProductCardRow }   from './ProductCardRow';
+import { ClinicCardRow }    from './ClinicCardRow';
 import { CartBadge }        from './CartBadge';
 import { PayButton }        from './PayButton';
 import { InterruptButton }  from './InterruptButton';
@@ -57,6 +58,8 @@ export function FieldVetSession() {
     cartItems,
     cartTotal,
     checkoutUrl,
+    clinics,
+    clinicsFallbackMessage,
     confirmedLocation,
     isAgentSpeaking,
     lastError,
@@ -66,14 +69,41 @@ export function FieldVetSession() {
     sendInterrupt,
     flushAudio,
     resumeContext,
+    sendLocationData,
   } = useWebSocketContext();
 
   // ── Geolocation ─────────────────────────────────────────────────────────────
   const {
     detectedState,
+    lat,
+    lon,
+    lga,
     hasGPSError,
     isLoading: geoLoading,
   } = useGeolocation();
+
+  // Send GPS coordinates to the backend once they resolve.
+  // This populates farmer_lat / farmer_lon in the ADK session state so
+  // find_nearest_vet_clinic can be called immediately when needed.
+  const gpsSentRef = useRef(false);
+  useEffect(() => {
+    if (
+      lat !== null &&
+      lon !== null &&
+      connectionState === 'connected' &&
+      !gpsSentRef.current
+    ) {
+      gpsSentRef.current = true;
+      sendLocationData(lat, lon, detectedState, lga);
+    }
+  }, [lat, lon, connectionState, detectedState, lga, sendLocationData]);
+
+  // Reset the sent flag on reconnect so GPS is re-sent after a session drop.
+  useEffect(() => {
+    if (connectionState === 'connecting') {
+      gpsSentRef.current = false;
+    }
+  }, [connectionState]);
 
   /**
    * Optimistic local location state — set immediately when the user confirms
@@ -159,6 +189,11 @@ export function FieldVetSession() {
   const productRowBottom = payButtonVisible
     ? 'calc(96px + var(--spacing-safe-bottom))'
     : 'calc(16px + var(--spacing-safe-bottom))';
+  // ClinicCardRow sits just above the product row when both are present.
+  // When no products, it sits at the same position as the product row.
+  const clinicRowBottom = products.length > 0
+    ? `calc(${payButtonVisible ? '256px' : '170px'} + var(--spacing-safe-bottom))`
+    : productRowBottom;
   // CartBadge sits above product row — add ~160px for product row height
   const cartBadgeBottom = payButtonVisible
     ? 'calc(266px + var(--spacing-safe-bottom))'
@@ -229,6 +264,21 @@ export function FieldVetSession() {
           }}
         >
           {lastError}
+        </div>
+      )}
+
+      {/* ── Clinic card row — slides up from bottom on CLINICS_FOUND (z=28) */}
+      {(clinics.length > 0 || clinicsFallbackMessage) && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: clinicRowBottom,
+            left: 0,
+            right: 0,
+            zIndex: 28,
+          }}
+        >
+          <ClinicCardRow clinics={clinics} fallbackMessage={clinicsFallbackMessage} />
         </div>
       )}
 

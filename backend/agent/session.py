@@ -79,6 +79,9 @@ class WafrivetSessionState(TypedDict, total=False):
     cart_total: float
     checkout_url: Optional[str]
     location_source: str
+    farmer_lat: Optional[float]
+    farmer_lon: Optional[float]
+    farmer_lga: Optional[str]
 
 
 # ---------------------------------------------------------------------------
@@ -98,4 +101,7 @@ INITIAL_STATE: dict[str, Any] = {
     "cart_total": 0.0,
     "checkout_url": None,
     "location_source": "voice",
+    "farmer_lat": None,
+    "farmer_lon": None,
+    "farmer_lga": None,
 }
