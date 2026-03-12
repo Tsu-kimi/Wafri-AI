@@ -114,7 +114,11 @@ function getOrCreateIds(): SessionIds {
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
-  const wsBaseUrl = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:8000';
+  const wsBaseUrl =
+    process.env.NEXT_PUBLIC_WS_URL ??
+    (process.env.NODE_ENV === 'production'
+      ? 'https://fieldvet-backend-1041869895037.us-central1.run.app'
+      : 'ws://localhost:8000');
 
   /**
    * Session IDs are initialised in useEffect (client-only) to avoid

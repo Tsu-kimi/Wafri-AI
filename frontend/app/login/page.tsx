@@ -17,7 +17,11 @@ import { useRouter } from 'next/navigation';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const API_BASE    = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ??
+  (process.env.NODE_ENV === 'production'
+    ? 'https://fieldvet-backend-1041869895037.us-central1.run.app'
+    : 'http://localhost:8000');
 const FARMER_KEY  = 'wafrivet_farmer';  // localStorage key for logged-in farmer
 
 type Step =
