@@ -110,6 +110,10 @@ resources:
               value: "FALSE"
             - name: WAFRIVET_LIVE_MODEL
               value: "gemini-live-2.5-flash-native-audio"
+            # CORS: comma-separated list of allowed frontend origins.
+            # Must include the Vercel deployment domain and local dev.
+            - name: ALLOWED_ORIGINS
+              value: "{{ properties.get('allowedOrigins', 'https://wafrivet-field-vet.vercel.app,http://localhost:3000') }}"
 
             # Secret Manager references — values are fetched at container start.
             # The Cloud Run SA must have secretAccessor on each secret.
@@ -139,6 +143,21 @@ resources:
               valueFrom:
                 secretKeyRef:
                   name: GOOGLE_CLOUD_PROJECT
+                  key: latest
+            # HS256 secret used to sign and verify session JWTs.
+            # Required by backend/auth/session.py — missing this causes every
+            # request to fail with EnvironmentError before CORS headers are added.
+            - name: SESSION_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: SESSION_JWT_SECRET
+                  key: latest
+            # Redis connection string for PIN attempts, OTP, and session-phone mapping.
+            # Use a Cloud Memorystore (redis://) or Upstash (rediss://) URL.
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: REDIS_URL
                   key: latest
 
             resources:
