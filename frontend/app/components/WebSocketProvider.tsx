@@ -3,7 +3,7 @@
 /**
  * app/components/WebSocketProvider.tsx
  *
- * Client Component — must NOT be imported with 'use client' in layout.tsx.
+ * Client Component — must NOT be imported with 'use client' in layout.tsx.,
  * layout.tsx (Server Component) imports this and wraps children with it;
  * Next.js App Router propagates the client boundary correctly.
  *
