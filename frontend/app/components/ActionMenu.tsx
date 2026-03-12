@@ -43,20 +43,27 @@ export function ActionMenu({
 
   const toggleMenu = () => setIsOpen(!isOpen);
 
-  const menuItemStyle: React.CSSProperties = {
+  const baseItemStyle: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     width: '44px',
     height: '44px',
+    cursor: 'pointer',
+    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+    WebkitTapHighlightColor: 'transparent',
+    background: 'none',
+    border: 'none',
+    padding: 0,
+  };
+
+  const triggerButtonStyle: React.CSSProperties = {
+    ...baseItemStyle,
     borderRadius: '50%',
     background: 'color-mix(in srgb, var(--color-surface-2) 60%, transparent)',
     border: '1px solid var(--color-border)',
     backdropFilter: 'blur(12px)',
-    cursor: 'pointer',
-    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
     boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-    WebkitTapHighlightColor: 'transparent',
   };
 
   return (
@@ -65,11 +72,11 @@ export function ActionMenu({
       <button
         onClick={toggleMenu}
         style={{
-          ...menuItemStyle,
+          ...triggerButtonStyle,
           background: hasNotifications && !isOpen 
             ? 'color-mix(in srgb, var(--color-error) 22%, transparent)' 
-            : 'color-mix(in srgb, var(--color-surface-2) 60%, transparent)',
-          border: `1px solid ${hasNotifications && !isOpen ? 'var(--color-error)' : 'var(--color-border)'}`,
+            : triggerButtonStyle.background,
+          border: hasNotifications && !isOpen ? '1px solid var(--color-error)' : triggerButtonStyle.border,
           transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
           zIndex: 100,
         }}
@@ -99,11 +106,7 @@ export function ActionMenu({
               setIsOpen(false);
             }}
             style={{
-              ...menuItemStyle,
-              background: hasNotifications 
-                ? 'color-mix(in srgb, var(--color-error) 22%, transparent)' 
-                : 'color-mix(in srgb, var(--color-surface-2) 60%, transparent)',
-              border: `1px solid ${hasNotifications ? 'var(--color-error)' : 'var(--color-border)'}`,
+              ...baseItemStyle,
               animation: 'menu-slide-down 0.3s cubic-bezier(0.22, 1, 0.36, 1) both',
               animationDelay: '0.05s',
             }}
@@ -111,7 +114,7 @@ export function ActionMenu({
           >
             <Notification 
               variant="Linear" 
-              color={hasNotifications ? 'var(--color-error)' : 'var(--color-white)'} 
+              color="var(--color-white)" 
               size={24} 
             />
           </button>
@@ -122,7 +125,7 @@ export function ActionMenu({
             target="_blank"
             rel="noopener noreferrer"
             style={{
-              ...menuItemStyle,
+              ...baseItemStyle,
               animation: 'menu-slide-down 0.3s cubic-bezier(0.22, 1, 0.36, 1) both',
               animationDelay: '0.1s',
             }}
@@ -138,7 +141,7 @@ export function ActionMenu({
               setIsOpen(false);
             }}
             style={{
-              ...menuItemStyle,
+              ...baseItemStyle,
               animation: 'menu-slide-down 0.3s cubic-bezier(0.22, 1, 0.36, 1) both',
               animationDelay: '0.15s',
             }}
@@ -154,7 +157,7 @@ export function ActionMenu({
               setIsOpen(false);
             }}
             style={{
-              ...menuItemStyle,
+              ...baseItemStyle,
               animation: 'menu-slide-down 0.3s cubic-bezier(0.22, 1, 0.36, 1) both',
               animationDelay: '0.2s',
             }}

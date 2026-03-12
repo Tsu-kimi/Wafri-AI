@@ -21,18 +21,15 @@ export function MediaControls({
   if (!isVisible) return null;
 
   const buttonStyle: React.CSSProperties = {
-    width: '48px',
-    height: '48px',
-    borderRadius: '16px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
     transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-    backdropFilter: 'blur(16px)',
-    border: '1.5px solid var(--color-border)',
+    background: 'none',
+    border: 'none',
     WebkitTapHighlightColor: 'transparent',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+    padding: 0,
   };
 
   return (
@@ -58,9 +55,9 @@ export function MediaControls({
         aria-label={isCameraPaused ? "Resume camera" : "Pause camera"}
       >
         {isCameraPaused ? (
-          <VideoSlash size={24} color="var(--color-error)" variant="Broken" />
+          <VideoSlash size={24} color="var(--color-white)" variant="Broken" />
         ) : (
-          <Video size={24} color="var(--color-text)" variant="Linear" />
+          <Video size={24} color="var(--color-white)" variant="Linear" />
         )}
       </button>
 
@@ -78,9 +75,9 @@ export function MediaControls({
         aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
       >
         {isMuted ? (
-          <MicrophoneSlash size={24} color="var(--color-error)" variant="Broken" />
+          <MicrophoneSlash size={24} color="var(--color-white)" variant="Broken" />
         ) : (
-          <Microphone2 size={24} color="var(--color-text)" variant="Linear" />
+          <Microphone2 size={24} color="var(--color-white)" variant="Linear" />
         )}
       </button>
     </div>
