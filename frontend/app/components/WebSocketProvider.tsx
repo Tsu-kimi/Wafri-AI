@@ -90,6 +90,11 @@ export interface WebSocketContextValue extends SessionState {
    */
   resumeAudio: () => void;
   /**
+   * Phase 5: Dismiss the phone/PIN overlay without verifying (user pressed Back).
+   * Transitions back to normal session without AWAITING_PIN.
+   */
+  clearPin: () => void;
+  /**
    * Phase 5: Send a PIN_VERIFIED message to the bridge so it transitions
    * from AWAITING_PIN → ACTIVE and resumes Gemini audio delivery.
    * Also updates the local session state (identityVerified = true).
@@ -158,6 +163,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     sendSessionContext,
     sendLocationData,
     clearError,
+    clearPin,
     sendPinVerified,
   } = useWebSocketSession({
     wsBaseUrl,
@@ -185,6 +191,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       sendLocationData,
       resumeContext,
       clearError,
+      clearPin,
       suspendAudio,
       resumeAudio,
       sendPinVerified,
@@ -201,6 +208,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       sendLocationData,
       resumeContext,
       clearError,
+      clearPin,
       suspendAudio,
       resumeAudio,
       sendPinVerified,

@@ -44,6 +44,7 @@ import { CartBadge } from './CartBadge';
 import { PayButton } from './PayButton';
 
 import { PinOverlay } from './PinOverlay';
+import { PhoneEntryOverlay } from './PhoneEntryOverlay';
 import { MediaControls } from './MediaControls';
 import { ActionMenu } from './ActionMenu';
 
@@ -73,6 +74,7 @@ export function FieldVetSession() {
     resumeContext,
     sendLocationData,
     clearError,
+    clearPin,
   } = useWebSocketContext();
 
   // ── Geolocation ─────────────────────────────────────────────────────────────
@@ -201,6 +203,27 @@ export function FieldVetSession() {
       }
     }
   }, [cartTotal, cartItems.length]);
+
+  // ── Phone + PIN flow state ─────────────────────────────────────────────────
+  // Step 1: PhoneEntryOverlay — farmer confirms/corrects the detected phone number.
+  // Step 2: PinOverlay        — farmer enters/creates their 6-digit PIN.
+  // `confirmedPhone` is null until the farmer taps Next in step 1.
+  const [confirmedPhone, setConfirmedPhone] = useState<string | null>(null);
+
+  // Reset step when pinRequired clears (e.g. after IDENTITY_VERIFIED).
+  useEffect(() => {
+    if (!pinRequired) setConfirmedPhone(null);
+  }, [pinRequired]);
+
+  const handlePhoneConfirmed = useCallback((e164: string) => {
+    setConfirmedPhone(e164);
+  }, []);
+
+  const handlePhoneBack = useCallback(() => {
+    // Dismiss the entire overlay flow — farmer wants to re-speak their number.
+    clearPin();
+    setConfirmedPhone(null);
+  }, [clearPin]);
 
   // ── Location banner manual-deny state ──────────────────────────────────────
   // Optimistically dismiss the banner immediately on confirm, then send the
@@ -573,10 +596,21 @@ export function FieldVetSession() {
         }}
       />
 
-      {/* ── Phase 5 PIN overlay — full-screen, highest z-index (z=200) ────────── */}
-      {pinRequired && (
-        <PinOverlay
+      {/* ── Phase 5 PIN flow — full-screen, highest z-index (z=200) ─────────── */}
+      {/* Step 1: Phone confirmation overlay */}
+      {pinRequired && !confirmedPhone && (
+        <PhoneEntryOverlay
           phoneNumber={pinRequired.phone_number}
+          isReturning={pinRequired.is_returning}
+          onConfirm={handlePhoneConfirmed}
+          onBack={handlePhoneBack}
+        />
+      )}
+
+      {/* Step 2: PIN setup / verify overlay (after phone confirmed) */}
+      {pinRequired && confirmedPhone && (
+        <PinOverlay
+          phoneNumber={confirmedPhone}
           isReturning={pinRequired.is_returning}
           onSuccess={() => {
             // sendPinVerified is called inside PinOverlay via context — it

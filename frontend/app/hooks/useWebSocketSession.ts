@@ -553,6 +553,11 @@ export function useWebSocketSession({
     dispatch({ type: 'CLEAR_ERROR' });
   }, []);
 
+  /** Phase 5: Dismiss the phone/PIN overlay without verifying (user pressed Back). */
+  const clearPin = useCallback(() => {
+    dispatch({ type: 'CLEAR_PIN' });
+  }, []);
+
   /**
    * Phase 5: After the PIN overlay has processed a successful PIN setup or
    * verify, call this to notify the backend bridge (transitions from
@@ -574,6 +579,7 @@ export function useWebSocketSession({
     sendSessionContext,
     sendLocationData,
     clearError,
+    clearPin,
     sendPinVerified,
   };
 }

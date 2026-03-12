@@ -25,3 +25,4 @@ export { InterruptButton } from './InterruptButton';
 export type { InterruptButtonProps } from './InterruptButton';
 
 export { PinOverlay } from './PinOverlay';
+export { PhoneEntryOverlay } from './PhoneEntryOverlay';

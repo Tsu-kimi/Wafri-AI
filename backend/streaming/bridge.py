@@ -340,13 +340,26 @@ async def run_bridge(
                     # Transient error — keep processing
                     continue
 
+                # ── Priority 2: Tool function responses (ALWAYS routed first) ─
+                # Must run BEFORE AWAITING_PIN suppression so that register_phone
+                # (which sets AWAITING_PIN inside the tool) still emits PIN_REQUIRED
+                # even though _awaiting will be True when the event arrives.
+                fn_responses = event.get_function_responses() if hasattr(event, "get_function_responses") else []
+                for fn_resp in (fn_responses or []):
+                    fn_name: str = fn_resp.name or ""
+                    await _route_tool_response(
+                        websocket=websocket,
+                        tool_name=fn_name,
+                        response=fn_resp.response,
+                        log_fn=_log,
+                        session_id=session_id,
+                    )
+
                 # ── AWAITING_PIN downstream suppression ─────────────────
-                # After a tool fires that transitions the session to AWAITING_PIN,
-                # we suppress all Gemini output (audio + events) except for the
-                # remainder of the current turn (which carries Fatima's "enter
-                # your PIN" message). The turn_complete event resets interruption.
-                # We sample the state once per tool_response/audio group, not
-                # per event, to avoid excessive Redis calls in tight loops.
+                # After register_phone transitions the session to AWAITING_PIN,
+                # suppress ALL remaining event processing (audio, turn_complete,
+                # interruption) until the PIN is verified. Function responses
+                # were already routed above so PIN_REQUIRED is never lost.
                 try:
                     from backend.services.session_state_service import is_awaiting_pin
                     _awaiting = await is_awaiting_pin(_auth_sid)
@@ -354,18 +367,11 @@ async def run_bridge(
                     _awaiting = False
 
                 if _awaiting:
-                    # Allow tool_response events through (so PIN_REQUIRED is sent)
-                    # but suppress audio and content events.
-                    _has_fn_resp = bool(
-                        event.get_function_responses()
-                        if hasattr(event, "get_function_responses") else []
-                    )
-                    if not _has_fn_resp:
-                        # Suppress audio, transcription, and turn_complete during
-                        # PIN entry so the browser is fully quiet.
-                        continue
+                    # Suppress audio, transcription, turn_complete, and interruption
+                    # during PIN entry so the browser is fully quiet.
+                    continue
 
-                # ── Priority 2: Interruption (barge-in) ──────────────────
+                # ── Priority 3: Interruption (barge-in) ──────────────────
                 if event.interrupted:
                     if not is_interrupted:
                         is_interrupted = True
@@ -396,7 +402,7 @@ async def run_bridge(
                 if is_interrupted:
                     continue
 
-                # ── Priority 5: Audio inline_data ────────────────────────
+                # ── Priority 4: Audio inline_data ────────────────────────
                 if event.content and event.content.parts:
                     for part in event.content.parts:
                         if part.inline_data and part.inline_data.data:
@@ -411,16 +417,6 @@ async def run_bridge(
                                 "AUDIO_OUT",
                                 bytes=len(part.inline_data.data),
                             )
-
-                # ── Priority 6: Tool function responses ──────────────────
-                fn_responses = event.get_function_responses() if hasattr(event, "get_function_responses") else []
-                for fn_resp in (fn_responses or []):
-                    fn_name: str = fn_resp.name or ""
-                    await _route_tool_response(
-                        websocket=websocket,
-                        tool_name=fn_name,
-                        response=fn_resp.response,
-                        log_fn=_log,                        session_id=session_id,                    )
 
         except WebSocketDisconnect:
             _log("info", "WebSocket disconnected during downstream", "DISCONNECT")
