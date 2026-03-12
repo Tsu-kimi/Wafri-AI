@@ -3,20 +3,42 @@
 /**
  * app/page.tsx — Root page.
  *
- * It conditionally renders the Onboarding carousel on first load.
- * Once the user completes onboarding, it mounts the FieldVetSession.
+ * Shows the Onboarding carousel only on a new device (first visit).
+ * Once the user completes onboarding, a flag is persisted to localStorage
+ * so subsequent loads skip straight to FieldVetSession.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { WebSocketProvider } from './components/WebSocketProvider';
 import { FieldVetSession } from './components/FieldVetSession';
 import { Onboarding } from './components/Onboarding';
 
+const ONBOARDED_KEY = 'wafrivet_onboarded';
+
 export default function Home() {
-  const [showOnboarding, setShowOnboarding] = useState(true);
+  // null = unknown (SSR / before hydration), true = show, false = skip
+  const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const alreadyOnboarded = localStorage.getItem(ONBOARDED_KEY) === '1';
+    setShowOnboarding(!alreadyOnboarded);
+  }, []);
+
+  const handleComplete = () => {
+    localStorage.setItem(ONBOARDED_KEY, '1');
+    setShowOnboarding(false);
+  };
+
+  // Hold rendering until localStorage has been read to avoid a flash.
+  if (showOnboarding === null) return null;
 
   if (showOnboarding) {
-    return <Onboarding onComplete={() => setShowOnboarding(false)} />;
+    return <Onboarding onComplete={handleComplete} />;
   }
 
-  return <FieldVetSession />;
+  return (
+    <WebSocketProvider>
+      <FieldVetSession />
+    </WebSocketProvider>
+  );
 }

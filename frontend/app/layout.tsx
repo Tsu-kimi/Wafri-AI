@@ -16,7 +16,6 @@
 
 import { Inter, Fraunces, JetBrains_Mono } from 'next/font/google';
 import type { Metadata, Viewport } from 'next';
-import { WebSocketProvider } from './components/WebSocketProvider';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
@@ -63,16 +62,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${fraunces.variable} ${mono.variable}`}>
       <body>
-        {/*
-          WebSocketProvider is a Client Component. Importing it here is valid
-          in App Router — the client boundary starts at the component itself,
-          not at the Server Component that renders it.
-
-          children (from page.tsx) are Server-rendered and passed through
-          WebSocketProvider as opaque React nodes; they do NOT become client
-          components simply because their parent is one.
-        */}
-        <WebSocketProvider>{children}</WebSocketProvider>
+        {children}
       </body>
     </html>
   );
