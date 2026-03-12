@@ -37,7 +37,7 @@ from backend.services.redis_client import get_redis
 log = logging.getLogger("wafrivet.services.otp_service")
 
 _PHONE_E164 = re.compile(r"^\+[1-9]\d{6,14}$")
-_TERMII_URL = "https://api.ng.termii.com/api/sms/send"
+_TERMII_URL = "https://v3.api.termii.com/api/sms/send"
 _OTP_TTL_SECONDS = 600  # 10 minutes
 _MAX_OTP_ATTEMPTS = 5
 
@@ -91,7 +91,7 @@ def _send_otp_sms(phone: str, message_suffix: str = "") -> Optional[str]:
         "from": sender_id,
         "sms": message_suffix,
         "type": "plain",
-        "channel": "generic",
+        "channel": "dnd",
     }).encode("utf-8")
 
     req = urllib.request.Request(

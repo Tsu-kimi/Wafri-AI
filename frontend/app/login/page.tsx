@@ -269,20 +269,30 @@ export default function LoginPage() {
   const handleOtpRequest = async () => {
     clearError();
     setLoading(true);
+    const url = `${API_BASE}/farmers/pin/reset/request`;
+    const body = JSON.stringify({ phone_number: phoneE164 });
+    console.log('[OTP Request] API_BASE:', API_BASE);
+    console.log('[OTP Request] URL:', url);
+    console.log('[OTP Request] Body:', body);
     try {
-      const res = await fetch(`${API_BASE}/farmers/pin/reset/request`, {
+      const res = await fetch(url, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone_number: phoneE164 }),
+        body,
       });
+      console.log('[OTP Request] Response status:', res.status, res.statusText);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        console.log('[OTP Request] Error response body:', data);
         setError(data?.detail ?? 'Could not send OTP. Please try again.');
         return;
       }
+      const data = await res.json().catch(() => ({}));
+      console.log('[OTP Request] Success response body:', data);
       setStep('otp_verify');
-    } catch {
+    } catch (err) {
+      console.error('[OTP Request] Fetch exception:', err);
       setError('Could not reach the server. Check your connection.');
     } finally {
       setLoading(false);

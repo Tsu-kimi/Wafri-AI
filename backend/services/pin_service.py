@@ -44,7 +44,7 @@ log = logging.getLogger("wafrivet.services.pin_service")
 
 _PHONE_E164 = re.compile(r"^\+[1-9]\d{6,14}$")
 _PIN_RE = re.compile(r"^\d{6}$")
-_TERMII_URL = "https://api.ng.termii.com/api/sms/send"
+_TERMII_URL = "https://v3.api.termii.com/api/sms/send"
 
 # Redis key template for attempt counters.
 _ATTEMPTS_KEY_PREFIX = "pin_attempts:"
@@ -111,7 +111,7 @@ def _send_termii_security_alert(phone: str, attempts: int) -> None:
         "from": sender_id,
         "sms": body,
         "type": "plain",
-        "channel": "generic",
+        "channel": "dnd",
     }).encode("utf-8")
     req = urllib.request.Request(
         _TERMII_URL,
