@@ -31,7 +31,6 @@ import React, {
   useEffect,
   useState,
   useCallback,
-  useId,
 } from 'react';
 
 import { useWebSocketContext } from './WebSocketProvider';
@@ -45,7 +44,7 @@ import { ProductCardRow }   from './ProductCardRow';
 import { ClinicCardRow }    from './ClinicCardRow';
 import { CartBadge }        from './CartBadge';
 import { PayButton }        from './PayButton';
-import { InterruptButton }  from './InterruptButton';
+
 import { PinOverlay }       from './PinOverlay';
 
 import type { Product } from '@/app/types/events';
@@ -63,7 +62,6 @@ export function FieldVetSession() {
     clinics,
     clinicsFallbackMessage,
     confirmedLocation,
-    isAgentSpeaking,
     lastError,
     isScanningProduct,
     orderConfirmed,
@@ -72,8 +70,6 @@ export function FieldVetSession() {
     sendAudio,
     sendImage,
     sendText,
-    sendInterrupt,
-    flushAudio,
     resumeContext,
     sendLocationData,
     clearError,
@@ -166,13 +162,6 @@ export function FieldVetSession() {
     await activateMic();
   }, [resumeContext, activateMic]);
 
-  // ── Interrupt handler ───────────────────────────────────────────────────────
-  // Stops audio client-side immediately AND signals backend to halt the turn.
-  const handleInterrupt = useCallback(() => {
-    sendInterrupt();
-    flushAudio();
-  }, [sendInterrupt, flushAudio]);
-
   // ── Cart update version — drives CartBadge pulse animation ─────────────────
   const [cartVersion, setCartVersion] = useState(0);
   const prevCartTotalRef = useRef(cartTotal);
@@ -194,22 +183,6 @@ export function FieldVetSession() {
       sendText(`My location is ${state}`);
     },
     [sendText],
-  );
-
-  // ── Voice-fallback text input (accessible alternative to mic) ──────────────
-  const [textDraft, setTextDraft] = useState('');
-  const textInputId = useId();
-
-  const handleTextSubmit = useCallback(
-    (e: React.FormEvent<HTMLFormElement>) => {
-      e.preventDefault();
-      const trimmed = textDraft.trim();
-      if (trimmed) {
-        sendText(trimmed);
-        setTextDraft('');
-      }
-    },
-    [textDraft, sendText],
   );
 
   // ── Add-to-cart voice command ───────────────────────────────────────────────
@@ -358,28 +331,6 @@ export function FieldVetSession() {
           </p>
         </div>
       )}
-
-      {/* ── Interrupt button — centered, only when AI is speaking (z=70) ─ */}
-      {isAgentSpeaking && (
-
-        <div
-          style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            zIndex: 70,
-            pointerEvents: 'auto',
-          }}
-        >
-          <InterruptButton
-            isVisible={isAgentSpeaking}
-            onInterrupt={handleInterrupt}
-          />
-        </div>
-      )}
-
-
 
       {/* ── Top Right Action Buttons (Notification) ───────────────────────── */}
       <div
@@ -573,79 +524,6 @@ export function FieldVetSession() {
           /* Deny is handled internally in LocationBanner — switches to manual input */
         }}
       />
-
-      {/* ── Voice-fallback text input — accessible typed interaction (z=25) */}
-      {isCapturing && (
-        <form
-          onSubmit={handleTextSubmit}
-          style={{
-            position: 'absolute',
-            bottom: payButtonVisible
-              ? 'calc(100px + var(--spacing-safe-bottom))'
-              : 'calc(16px + var(--spacing-safe-bottom))',
-            left: '16px',
-            right: '16px',
-            display: 'flex',
-            gap: '8px',
-            zIndex: 25,
-            // Only show text input when no product row / cart is open.
-            // Keep it accessible but visually minimal.
-            opacity: products.length > 0 ? 0 : 1,
-            pointerEvents: products.length > 0 ? 'none' : 'auto',
-          }}
-          aria-label="Type a message to the AI vet"
-        >
-          <label
-            htmlFor={textInputId}
-            style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden' }}
-          >
-            Message
-          </label>
-          <input
-            id={textInputId}
-            type="text"
-            value={textDraft}
-            onChange={(e) => setTextDraft(e.target.value)}
-            placeholder="Type a message…"
-            autoComplete="off"
-            autoCorrect="on"
-            style={{
-              flex: 1,
-              background: 'var(--color-surface)',
-              border: '1.5px solid var(--color-border)',
-              borderRadius: '12px',
-              padding: '0 14px',
-              fontSize: '15px',
-              color: 'var(--color-text)',
-              minHeight: '48px',
-              backdropFilter: 'blur(8px)',
-              outline: 'none',
-            }}
-          />
-          <button
-            type="submit"
-            disabled={!textDraft.trim()}
-            style={{
-              background: textDraft.trim()
-                ? 'var(--color-primary)'
-                : 'color-mix(in srgb, var(--color-primary) 30%, transparent)',
-              color: 'var(--color-white)',
-              border: 'none',
-              borderRadius: '12px',
-              padding: '0 16px',
-              fontSize: '14px',
-              fontWeight: 700,
-              cursor: textDraft.trim() ? 'pointer' : 'not-allowed',
-              minHeight: '48px',
-              minWidth: '64px',
-              transition: 'background 0.2s',
-            }}
-            aria-label="Send message"
-          >
-            Send
-          </button>
-        </form>
-      )}
 
       {/* ── Phase 5 PIN overlay — full-screen, highest z-index (z=200) ────────── */}
       {pinRequired && (

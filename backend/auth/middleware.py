@@ -156,6 +156,13 @@ class SessionMiddleware:
             await self.app(scope, receive, send)
             return
 
+        # Skip session minting for health check endpoints — Cloud Run probes
+        # hit /health every 30 s and do not carry cookies, which would create
+        # a new anonymous session on every probe.
+        if scope.get("path") in ("/health", "/healthz"):
+            await self.app(scope, receive, send)
+            return
+
         raw_headers: list[tuple[bytes, bytes]] = list(scope.get("headers", []))
         cookies = _parse_cookies(raw_headers)
         raw_jwt: str | None = cookies.get(COOKIE_NAME)

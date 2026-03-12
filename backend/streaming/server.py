@@ -151,15 +151,11 @@ def _build_run_config() -> RunConfig:
 _runner: Runner | None = None
 _session_service: InMemorySessionService | None = None
 _run_config: RunConfig | None = None
-# Limits simultaneous Gemini Live connections to stay within API quota.
-# Default 1 matches the free-tier concurrent session limit.
-# Set MAX_GEMINI_SESSIONS env var to raise the cap on a paid key.
-_gemini_semaphore: asyncio.Semaphore | None = None
 
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncGenerator:
-    global _runner, _session_service, _run_config, _gemini_semaphore
+    global _runner, _session_service, _run_config
 
     log.info("wafrivet_streaming_startup", live_model=_LIVE_MODEL)
 
@@ -181,10 +177,7 @@ async def _lifespan(_app: FastAPI) -> AsyncGenerator:
     )
     _run_config = _build_run_config()
 
-    max_sessions = int(os.environ.get("MAX_GEMINI_SESSIONS", "1"))
-    _gemini_semaphore = asyncio.Semaphore(max_sessions)
-
-    log.info("runner_ready", agent=live_agent.name, model=_LIVE_MODEL, max_gemini_sessions=max_sessions)
+    log.info("runner_ready", agent=live_agent.name, model=_LIVE_MODEL)
 
     yield  # ← server is live
 
@@ -410,48 +403,33 @@ async def websocket_endpoint(
     # Persist the mapping so the client can reconnect
     upsert_session_handle(user_id=user_id, session_id=session_id)
 
-    # ── 5. Guard Gemini Live concurrent session quota ─────────────────────
-    # Rejects new connections immediately when the API limit is already
-    # reached, so we never get a 1011 RESOURCE_EXHAUSTED from Gemini.
-    assert _gemini_semaphore is not None, "gemini_semaphore not initialised"
-    if _gemini_semaphore.locked():
-        log.warning("gemini_at_capacity", user_id=user_id, session_id=session_id)
-        await websocket.send_json({
-            "type": "ERROR",
-            "code": "CAPACITY",
-            "message": "All AI sessions are busy. Please wait a moment and reconnect.",
-        })
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
-
-    # ── 6. Hand off to bridge ─────────────────────────────────────────────
-    async with _gemini_semaphore:
-        try:
-            await run_bridge(
-                websocket=websocket,
-                user_id=user_id,
-                session_id=session_id,
-                runner=_runner,
-                session_service=_session_service,
-                run_config=_run_config,
-                auth_session_id=auth_session_id,
-            )
-        except WebSocketDisconnect:
-            log.info("ws_disconnected", user_id=user_id, session_id=session_id)
-        except Exception as exc:
-            log.error(
-                "ws_unhandled_error",
-                user_id=user_id,
-                session_id=session_id,
-                error=str(exc),
-            )
-        finally:
-            import json as _json, logging as _logging
-            _logging.getLogger("wafrivet.streaming.server").info(
-                _json.dumps({
-                    "event": "session_close",
-                    "session_id": session_id,
-                    "user_id": user_id,
-                })
-            )
-            log.info("ws_closed", user_id=user_id, session_id=session_id)
+    # ── 5. Hand off to bridge ─────────────────────────────────────────────
+    try:
+        await run_bridge(
+            websocket=websocket,
+            user_id=user_id,
+            session_id=session_id,
+            runner=_runner,
+            session_service=_session_service,
+            run_config=_run_config,
+            auth_session_id=auth_session_id,
+        )
+    except WebSocketDisconnect:
+        log.info("ws_disconnected", user_id=user_id, session_id=session_id)
+    except Exception as exc:
+        log.error(
+            "ws_unhandled_error",
+            user_id=user_id,
+            session_id=session_id,
+            error=str(exc),
+        )
+    finally:
+        import json as _json, logging as _logging
+        _logging.getLogger("wafrivet.streaming.server").info(
+            _json.dumps({
+                "event": "session_close",
+                "session_id": session_id,
+                "user_id": user_id,
+            })
+        )
+        log.info("ws_closed", user_id=user_id, session_id=session_id)
