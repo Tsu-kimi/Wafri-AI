@@ -51,11 +51,7 @@ export const WT = {
   /** Phase 3: identify_product_from_frame is active; show scanning indicator. */
   SCANNING_PRODUCT:      'SCANNING_PRODUCT',
 
-  // ── Phase 5: Identity & PIN events (server → client) ─────────────────────
-  /** Farmer identity registered; frontend must show PIN overlay. */
-  PIN_REQUIRED:      'PIN_REQUIRED',
-  /** PIN verified; PIN overlay should close and audio should resume. */
-  IDENTITY_VERIFIED: 'IDENTITY_VERIFIED',
+  // ── Phase 5: Payment event (server → client) ────────────────────────────────
   /** Paystack webhook confirmed payment; show confirmation banner. */
   PAYMENT_CONFIRMED: 'PAYMENT_CONFIRMED',
 
@@ -68,8 +64,6 @@ export const WT = {
   INTERRUPT: 'INTERRUPT',
   /** Browser GPS coordinates sent once geolocation resolves. */
   LOCATION_DATA: 'LOCATION_DATA',
-  /** Sent after successful PIN setup/verify so the bridge resumes Gemini audio. */
-  PIN_VERIFIED: 'PIN_VERIFIED',
 } as const;
 
 export type WTKey = keyof typeof WT;
@@ -256,27 +250,6 @@ export interface ScanningProductEvent {
 }
 
 /**
- * Phase 5: Farmer phone registered; backend is now AWAITING_PIN.
- * The frontend must show the PIN overlay and suspend the AudioContext.
- */
-export interface PinRequiredEvent {
-  type: 'PIN_REQUIRED';
-  /** E.164 phone number that was just registered (e.g. "+2348012345678"). */
-  phone_number: string;
-  /** True if the farmer already has a PIN set (verify flow); false for setup flow. */
-  is_returning: boolean;
-}
-
-/**
- * Phase 5: PIN verified (or set). Gemini audio resumes.
- * The farmer's display name to show in the UI.
- */
-export interface IdentityVerifiedEvent {
-  type: 'IDENTITY_VERIFIED';
-  farmer_name: string;
-}
-
-/**
  * Phase 5: Paystack webhook confirmed payment for this session.
  * Show a persistent confirmation banner with the payment reference.
  */
@@ -321,8 +294,6 @@ export type ServerEvent =
   | InterruptedEvent
   | OrderConfirmedEvent
   | ScanningProductEvent
-  | PinRequiredEvent
-  | IdentityVerifiedEvent
   | PaymentConfirmedEvent;
 
 // ── Client → Server JSON messages ─────────────────────────────────────────────
@@ -368,18 +339,8 @@ export interface LocationDataMessage {
   state?: string;
 }
 
-/**
- * Phase 5: Sent after the farmer sets/verifies their PIN so the bridge
- * transitions session state back to ACTIVE and resumes Gemini audio.
- */
-export interface PinVerifiedMessage {
-  type: 'PIN_VERIFIED';
-  /** Farmer's display name returned by the /farmers/pin or /farmers/pin/verify endpoint. */
-  farmer_name: string;
-}
-
 /** Discriminated union of all client → server JSON messages. */
-export type ClientMessage = ImageMessage | TextMessage | InterruptMessage | LocationDataMessage | PinVerifiedMessage;
+export type ClientMessage = ImageMessage | TextMessage | InterruptMessage | LocationDataMessage;
 
 // ── Type guard ────────────────────────────────────────────────────────────────
 

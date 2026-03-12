@@ -62,11 +62,9 @@ from backend.streaming.events import (
     cart_updated_event,
     checkout_link_event,
     clinics_found_event,
-    identity_verified_event,
     location_confirmed_event,
     order_confirmed_event,
     payment_confirmed_event,
-    pin_required_event,
     products_recommended_event,
     scanning_product_event,
     tool_error_event,
@@ -155,72 +153,6 @@ async def run_bridge(
                 if message["type"] == "websocket.disconnect":
                     _log("info", "client disconnected (upstream)", "DISCONNECT")
                     break
-
-                # ── AWAITING_PIN suppression ────────────────────────────────
-                # When a PIN overlay is active, suppress all messages flowing
-                # to Gemini (except PIN_VERIFIED which is handled below).
-                # Binary audio is also dropped to prevent Gemini from processing
-                # the farmer's speech and generating a response during PIN entry.
-                if "text" in message and message["text"] is not None:
-                    try:
-                        _pre_payload: dict = json.loads(message["text"])
-                    except (json.JSONDecodeError, Exception):
-                        _pre_payload = {}
-
-                    _msg_type = _pre_payload.get("type", "")
-
-                    # ── PIN_VERIFIED: client signals successful PIN check ────
-                    if _msg_type == "PIN_VERIFIED":
-                        farmer_name: str = _pre_payload.get("farmer_name", "")
-                        # Update the ADK session state to mark identity verified.
-                        try:
-                            _session = await session_service.get_session(
-                                app_name=runner.app_name,
-                                user_id=user_id,
-                                session_id=session_id,
-                            )
-                            if _session:
-                                _session.state["farmer_phone_verified"] = True
-                                if farmer_name:
-                                    _session.state["farmer_name"] = farmer_name
-                        except Exception as _exc:
-                            _log("warning", f"Failed to update verified state: {_exc}", "PIN_VERIFIED_ERR")
-
-                        # Session state is now ACTIVE (set by /farmers/pin/verify).
-                        # Inject a Gemini content so Fatima resumes naturally.
-                        _resume_text = (
-                            f"The farmer's identity has been verified successfully. "
-                            f"{f'Their name is {farmer_name}. ' if farmer_name else ''}"
-                            "Please greet them warmly and continue helping with their request."
-                        )
-                        live_request_queue.send_content(
-                            types.Content(
-                                role="user",
-                                parts=[types.Part(text=_resume_text)],
-                            )
-                        )
-                        await websocket.send_json(
-                            identity_verified_event(
-                                farmer_name=farmer_name or None,
-                                message="Identity verified. Fatima is resuming.",
-                            )
-                        )
-                        _log("info", f"PIN verified, session resumed for {farmer_name!r}", "PIN_VERIFIED")
-                        continue
-
-                # Check whether the session is in AWAITING_PIN state.
-                # Done per-message (after PIN_VERIFIED handled above) — Redis GET
-                # is O(1) and takes ~1 ms per call, acceptable at WS message rates.
-                try:
-                    from backend.services.session_state_service import is_awaiting_pin
-                    _in_pin_mode = await is_awaiting_pin(_auth_sid)
-                except Exception:
-                    _in_pin_mode = False
-
-                if _in_pin_mode:
-                    # Silently drop all messages (audio + text) during PIN entry.
-                    _log("debug", "upstream message dropped — AWAITING_PIN", "PIN_SUPPRESS")
-                    continue
 
                 if "bytes" in message and message["bytes"] is not None:
                     # Binary frame → raw PCM audio chunk
@@ -341,9 +273,6 @@ async def run_bridge(
                     continue
 
                 # ── Priority 2: Tool function responses (ALWAYS routed first) ─
-                # Must run BEFORE AWAITING_PIN suppression so that register_phone
-                # (which sets AWAITING_PIN inside the tool) still emits PIN_REQUIRED
-                # even though _awaiting will be True when the event arrives.
                 fn_responses = event.get_function_responses() if hasattr(event, "get_function_responses") else []
                 for fn_resp in (fn_responses or []):
                     fn_name: str = fn_resp.name or ""
@@ -354,22 +283,6 @@ async def run_bridge(
                         log_fn=_log,
                         session_id=session_id,
                     )
-
-                # ── AWAITING_PIN downstream suppression ─────────────────
-                # After register_phone transitions the session to AWAITING_PIN,
-                # suppress ALL remaining event processing (audio, turn_complete,
-                # interruption) until the PIN is verified. Function responses
-                # were already routed above so PIN_REQUIRED is never lost.
-                try:
-                    from backend.services.session_state_service import is_awaiting_pin
-                    _awaiting = await is_awaiting_pin(_auth_sid)
-                except Exception:
-                    _awaiting = False
-
-                if _awaiting:
-                    # Suppress audio, transcription, turn_complete, and interruption
-                    # during PIN entry so the browser is fully quiet.
-                    continue
 
                 # ── Priority 3: Interruption (barge-in) ──────────────────
                 if event.interrupted:
@@ -735,27 +648,6 @@ async def _route_tool_response(
             log_fn("info", f"ORDER_CONFIRMED: {data.get('order_reference', '')}", "ORDER_CONFIRMED")
 
         # ── Phase 5 tool routes ─────────────────────────────────────────────────
-
-        elif tool_name == "register_phone":
-            # Emit PIN_REQUIRED so the frontend shows the PIN overlay.
-            phone_out = data.get("phone_number", "")
-            is_ret: bool = resp_dict.get("is_returning", False)
-            await websocket.send_json(
-                pin_required_event(
-                    phone_number=phone_out,
-                    is_returning=is_ret,
-                    message=message,
-                )
-            )
-            logger.info(
-                {
-                    "event": "tool_call",
-                    "tool": "register_phone",
-                    "is_returning": is_ret,
-                    "session_id": session_id,
-                }
-            )
-            log_fn("info", f"PIN_REQUIRED sent (is_returning={is_ret})", "PIN_REQUIRED")
 
         elif tool_name == "get_order_history":
             # Fatima narrates the order history aloud — no UI card is emitted.

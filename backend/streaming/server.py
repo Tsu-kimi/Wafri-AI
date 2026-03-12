@@ -254,7 +254,7 @@ async def health_check() -> JSONResponse:
         supabase_key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 
         def _supabase_ping() -> None:
-            from supabase import create_client as _mk  # local import — avoids circular
+            from supabase import create_client as _mk  # type: ignore[attr-defined]  # local import
             _mk(supabase_url, supabase_key).table("products").select("id").limit(1).execute()
 
         await asyncio.wait_for(asyncio.to_thread(_supabase_ping), timeout=2.0)
@@ -374,6 +374,28 @@ async def websocket_endpoint(
         # RLS-scoped Supabase queries via rls_context(auth_session_id).
         initial_state = dict(INITIAL_STATE)
         initial_state["auth_session_id"] = auth_session_id
+
+        # If the farmer has already logged in, the sessions row will have
+        # phone_number set by POST /farmers/login. Populate farmer_phone in
+        # the ADK session state so Fatima greets them by name without asking.
+        try:
+            from backend.db.rls import rls_context as _rls
+            async with _rls(auth_session_id) as _conn:
+                _row = await _conn.fetchrow(
+                    """
+                    SELECT s.phone_number, f.name
+                      FROM public.sessions s
+                      LEFT JOIN public.farmers f ON f.phone_number = s.phone_number
+                     WHERE s.session_id = $1
+                    """,
+                    auth_session_id,
+                )
+            if _row and _row["phone_number"]:
+                initial_state["farmer_phone"] = _row["phone_number"]
+                if _row["name"]:
+                    initial_state["farmer_name"] = _row["name"]
+        except Exception as _exc:
+            log.warning("session_phone_lookup_failed", auth_session_id=auth_session_id, error=str(_exc))
 
         await _session_service.create_session(
             app_name=_APP_NAME,

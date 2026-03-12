@@ -3,33 +3,42 @@
 /**
  * app/page.tsx — Root page.
  *
- * Shows the Onboarding carousel only on a new device (first visit).
- * Once the user completes onboarding, a flag is persisted to localStorage
- * so subsequent loads skip straight to FieldVetSession.
+ * Auth gate: redirects unauthenticated users to /login.
+ * Shows the Onboarding carousel only on the first visit after login.
+ * Once onboarding is complete, goes straight to the FieldVetSession.
  */
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { WebSocketProvider } from './components/WebSocketProvider';
 import { FieldVetSession } from './components/FieldVetSession';
 import { Onboarding } from './components/Onboarding';
 
 const ONBOARDED_KEY = 'wafrivet_onboarded';
+const FARMER_KEY    = 'wafrivet_farmer';
 
 export default function Home() {
-  // null = unknown (SSR / before hydration), true = show, false = skip
+  const router = useRouter();
+  // null = unknown (SSR / before hydration)
   const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
 
   useEffect(() => {
+    // Guard: require login before allowing access.
+    const farmer = localStorage.getItem(FARMER_KEY);
+    if (!farmer) {
+      router.replace('/login');
+      return;
+    }
     const alreadyOnboarded = localStorage.getItem(ONBOARDED_KEY) === '1';
     setShowOnboarding(!alreadyOnboarded);
-  }, []);
+  }, [router]);
 
   const handleComplete = () => {
     localStorage.setItem(ONBOARDED_KEY, '1');
     setShowOnboarding(false);
   };
 
-  // Hold rendering until localStorage has been read to avoid a flash.
+  // Hold rendering until localStorage has been checked.
   if (showOnboarding === null) return null;
 
   if (showOnboarding) {
