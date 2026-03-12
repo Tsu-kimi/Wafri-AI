@@ -24,6 +24,9 @@ export function MediaControls({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    width: '44px',
+    height: '44px',
+    borderRadius: '50%',
     cursor: 'pointer',
     transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
     background: 'none',
@@ -45,9 +48,6 @@ export function MediaControls({
         onClick={onToggleCamera}
         style={{
           ...buttonStyle,
-          background: isCameraPaused 
-            ? 'color-mix(in srgb, var(--color-error) 20%, rgba(255,255,255,0.6))' 
-            : 'color-mix(in srgb, var(--color-surface-2) 60%, transparent)',
           transform: isCameraPaused ? 'scale(1.05)' : 'scale(1)',
         }}
         onPointerDown={(e) => (e.currentTarget.style.transform = 'scale(0.92)')}
@@ -55,9 +55,9 @@ export function MediaControls({
         aria-label={isCameraPaused ? "Resume camera" : "Pause camera"}
       >
         {isCameraPaused ? (
-          <VideoSlash size={24} color="var(--color-white)" variant="Broken" />
+          <VideoSlash size={32} color="var(--color-white)" variant="Broken" />
         ) : (
-          <Video size={24} color="var(--color-white)" variant="Linear" />
+          <Video size={32} color="var(--color-white)" variant="Linear" />
         )}
       </button>
 
@@ -65,9 +65,6 @@ export function MediaControls({
         onClick={onToggleMute}
         style={{
           ...buttonStyle,
-          background: isMuted 
-            ? 'color-mix(in srgb, var(--color-error) 20%, rgba(255,255,255,0.6))' 
-            : 'color-mix(in srgb, var(--color-surface-2) 60%, transparent)',
           transform: isMuted ? 'scale(1.05)' : 'scale(1)',
         }}
         onPointerDown={(e) => (e.currentTarget.style.transform = 'scale(0.92)')}
@@ -75,9 +72,9 @@ export function MediaControls({
         aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
       >
         {isMuted ? (
-          <MicrophoneSlash size={24} color="var(--color-white)" variant="Broken" />
+          <MicrophoneSlash size={32} color="var(--color-white)" variant="Broken" />
         ) : (
-          <Microphone2 size={24} color="var(--color-white)" variant="Linear" />
+          <Microphone2 size={32} color="var(--color-white)" variant="Linear" />
         )}
       </button>
     </div>
