@@ -202,14 +202,15 @@ app = FastAPI(
 # ── Phase 4: CORS ─────────────────────────────────────────────────────────────
 # Restrict origins to the known Vercel frontend domain and local dev.
 # Credentials=True is required so the browser sends the HttpOnly session cookie.
+# Hardcoded allowlist to avoid production failures caused by missing/mis-set env vars.
 _allowed_origins: list[str] = [
-    origin.strip()
-    for origin in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
-    if origin.strip()
+    "https://wafrivet-field-vet.vercel.app",
+    "http://localhost:3000",
 ]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,  # Required for HttpOnly cookie to be sent cross-origin
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
