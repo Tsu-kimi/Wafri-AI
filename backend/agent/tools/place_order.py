@@ -216,13 +216,14 @@ async def place_order(
                 }
 
             cart_status = row["status"]
-            if cart_status not in ("active",):
+            if cart_status != "payment_received":
                 return {
                     "status": "error",
                     "data":   {},
                     "message": (
-                        f"This cart has already been submitted (status: {cart_status}). "
-                        "Start a new session to place another order."
+                        "Payment has not been confirmed yet. "
+                        "Please complete Paystack checkout first. "
+                        f"Current cart status is '{cart_status}'."
                     ),
                 }
 

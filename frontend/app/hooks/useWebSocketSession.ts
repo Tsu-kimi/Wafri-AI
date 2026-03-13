@@ -388,7 +388,7 @@ export function useWebSocketSession({
           dispatch({
             type: 'PAYMENT_CONFIRMED',
             payment_reference: raw.payment_reference,
-            amount_ngn: raw.amount_ngn,
+            amount_ngn: Number(raw.amount_ngn ?? 0),
           });
           break;
 

@@ -19,7 +19,7 @@ from __future__ import annotations
 import os
 import sys
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -284,72 +284,61 @@ class TestRecommendProducts:
 class TestManageCart:
     """Unit tests for backend.agent.tools.cart.manage_cart."""
 
+    pytestmark = pytest.mark.asyncio
+
     def _import_tool(self):
         from backend.agent.tools.cart import manage_cart
         return manage_cart
 
-    def test_invalid_action_returns_error(self):
+    async def test_invalid_action_returns_error(self):
         fn = self._import_tool()
         ctx = _make_tool_context()
 
-        result = fn(action="delete", phone="+2348099887766", tool_context=ctx)
+        result = await fn(action="delete", phone="+2348099887766", tool_context=ctx)
 
         assert result["status"] == "error"
         assert "add, remove, clear" in result["message"]
 
-    def test_invalid_phone_returns_error(self):
+    async def test_invalid_phone_returns_error(self):
         fn = self._import_tool()
         ctx = _make_tool_context()
 
-        result = fn(action="clear", phone="not-a-phone", tool_context=ctx)
+        result = await fn(action="clear", phone="not-a-phone", tool_context=ctx)
 
         assert result["status"] == "error"
         assert "E.164" in result["message"]
 
-    @patch("backend.agent.tools.cart._get_supabase_client")
-    def test_add_new_item_success(self, mock_supabase_factory):
+    @patch("backend.agent.tools.cart._fetch_product")
+    async def test_add_new_item_success(self, mock_fetch_product):
         """Adding a product when cart is empty must create the item and return updated total."""
 
-        mock_product_response = MagicMock()
-        mock_product_response.data = {
+        mock_fetch_product.return_value = {
             "id": "prod-0001",
             "name": "Rumenol Anti-Bloat Oral Drench (500 ml)",
             "base_price": "3200.00",
         }
 
-        mock_cart_response = MagicMock()
-        mock_cart_response.data = None  # No existing cart
+        conn = AsyncMock()
+        conn.fetchrow.return_value = None  # No existing cart
 
-        mock_upsert_response = MagicMock()
+        class _Ctx:
+            async def __aenter__(self):
+                return conn
 
-        mock_db = MagicMock()
-        # _fetch_product: .select().eq().eq().single().execute()
-        mock_db.table.return_value.select.return_value \
-            .eq.return_value \
-            .eq.return_value \
-            .single.return_value \
-            .execute.return_value = mock_product_response
-        # _load_cart: .select().eq().maybe_single().execute()
-        mock_db.table.return_value.select.return_value \
-            .eq.return_value \
-            .maybe_single.return_value \
-            .execute.return_value = mock_cart_response
-        # _upsert_cart
-        mock_db.table.return_value.upsert.return_value.execute.return_value = (
-            mock_upsert_response
-        )
-        mock_supabase_factory.return_value = mock_db
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
 
         fn = self._import_tool()
-        ctx = _make_tool_context()
+        ctx = _make_tool_context({"auth_session_id": "auth-sid-1"})
 
-        result = fn(
-            action="add",
-            phone="+2348099887766",
-            product_id="prod-0001",
-            qty=1,
-            tool_context=ctx,
-        )
+        with patch("backend.db.rls.rls_context", return_value=_Ctx()):
+            result = await fn(
+                action="add",
+                phone="+2348099887766",
+                product_id="prod-0001",
+                qty=1,
+                tool_context=ctx,
+            )
 
         assert result["status"] == "success"
         assert "cart_total" in result["data"]
@@ -361,29 +350,27 @@ class TestManageCart:
         assert ctx.state["cart_total"] == 3200.0
         assert len(ctx.state["cart_items"]) == 1
 
-    @patch("backend.agent.tools.cart._get_supabase_client")
-    def test_clear_cart_returns_zero_total(self, mock_supabase_factory):
+    async def test_clear_cart_returns_zero_total(self):
         """Clearing the cart must set total to 0 and return an empty items list."""
-        mock_cart_response = MagicMock()
-        mock_cart_response.data = {
+        conn = AsyncMock()
+        conn.fetchrow.return_value = {
             "id": "cart-0001",
             "items_json": [{"product_id": "p1", "quantity": 2, "subtotal": 6400.0}],
             "total_amount": 6400.0,
         }
-        mock_upsert = MagicMock()
 
-        mock_db = MagicMock()
-        mock_db.table.return_value.select.return_value \
-            .eq.return_value \
-            .maybe_single.return_value \
-            .execute.return_value = mock_cart_response
-        mock_db.table.return_value.upsert.return_value.execute.return_value = mock_upsert
-        mock_supabase_factory.return_value = mock_db
+        class _Ctx:
+            async def __aenter__(self):
+                return conn
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
 
         fn = self._import_tool()
-        ctx = _make_tool_context({"cart_items": [], "cart_total": 6400.0})
+        ctx = _make_tool_context({"cart_items": [], "cart_total": 6400.0, "auth_session_id": "auth-sid-1"})
 
-        result = fn(action="clear", phone="+2348099887766", tool_context=ctx)
+        with patch("backend.db.rls.rls_context", return_value=_Ctx()):
+            result = await fn(action="clear", phone="+2348099887766", tool_context=ctx)
 
         assert result["status"] == "success"
         assert result["data"]["cart_total"] == 0.0
@@ -399,42 +386,55 @@ class TestManageCart:
 class TestGenerateCheckoutLink:
     """Unit tests for backend.agent.tools.checkout.generate_checkout_link."""
 
+    pytestmark = pytest.mark.asyncio
+
     def _import_tool(self):
         from backend.agent.tools.checkout import generate_checkout_link
         return generate_checkout_link
 
-    def test_invalid_phone_returns_error(self):
+    async def test_invalid_phone_returns_error(self):
         fn = self._import_tool()
         ctx = _make_tool_context()
 
-        result = fn(phone="badphone", cart_total=3200, tool_context=ctx)
+        result = await fn(phone="badphone", cart_total=3200, tool_context=ctx)
 
         assert result["status"] == "error"
         assert "E.164" in result["message"]
 
-    def test_zero_total_returns_error(self):
+    async def test_zero_total_returns_error(self):
         fn = self._import_tool()
         ctx = _make_tool_context()
 
-        result = fn(phone="+2348099887766", cart_total=0, tool_context=ctx)
+        result = await fn(phone="+2348099887766", cart_total=0, tool_context=ctx)
 
         assert result["status"] == "error"
         assert "empty" in result["message"].lower() or "zero" in result["message"].lower()
 
-    def test_missing_paystack_key_returns_error(self):
+    async def test_missing_paystack_key_returns_error(self):
         fn = self._import_tool()
-        ctx = _make_tool_context()
+        ctx = _make_tool_context({"auth_session_id": "auth-sid-1"})
 
-        with patch.dict(os.environ, {"PAYSTACK_SECRET_KEY": ""}):
-            result = fn(phone="+2348099887766", cart_total=3200, tool_context=ctx)
+        conn = AsyncMock()
+        conn.fetchrow.return_value = {"delivery_address": "Test address, Rivers"}
+
+        class _Ctx:
+            async def __aenter__(self):
+                return conn
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        with patch.dict(os.environ, {"PAYSTACK_SECRET_KEY": ""}), patch(
+            "backend.db.rls.rls_context", return_value=_Ctx()
+        ):
+            result = await fn(phone="+2348099887766", cart_total=3200, tool_context=ctx)
 
         assert result["status"] == "error"
         assert "not configured" in result["message"].lower()
 
-    @patch("backend.agent.tools.checkout._get_supabase_client")
     @patch("backend.agent.tools.checkout._call_paystack")
-    def test_success_path_returns_checkout_url(
-        self, mock_paystack, mock_supabase_factory
+    async def test_success_path_returns_checkout_url(
+        self, mock_paystack
     ):
         """
         When Paystack returns successfully, the tool must return checkout_url
@@ -449,15 +449,23 @@ class TestGenerateCheckoutLink:
             },
         }
 
-        mock_db = MagicMock()
-        mock_db.table.return_value.upsert.return_value.execute.return_value = MagicMock()
-        mock_supabase_factory.return_value = mock_db
+        conn = AsyncMock()
+        conn.fetchrow.return_value = {"delivery_address": "Farm gate 12, Port Harcourt"}
+
+        class _Ctx:
+            async def __aenter__(self):
+                return conn
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
 
         fn = self._import_tool()
-        ctx = _make_tool_context()
+        ctx = _make_tool_context({"auth_session_id": "auth-sid-1"})
 
-        with patch.dict(os.environ, {"PAYSTACK_SECRET_KEY": "sk_test_dummy_key"}):
-            result = fn(phone="+2348099887766", cart_total=3200, tool_context=ctx)
+        with patch.dict(os.environ, {"PAYSTACK_SECRET_KEY": "sk_test_dummy_key"}), patch(
+            "backend.db.rls.rls_context", return_value=_Ctx()
+        ):
+            result = await fn(phone="+2348099887766", cart_total=3200, tool_context=ctx)
 
         assert result["status"] == "success"
         assert "checkout_url" in result["data"]

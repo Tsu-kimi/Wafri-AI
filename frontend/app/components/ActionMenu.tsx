@@ -13,6 +13,7 @@ import {
 interface ActionMenuProps {
   onShowNotifications: () => void;
   onResetLocation: () => void;
+  onManageAddress: () => void;
   onShowCart: () => void;
   hasNotifications: boolean;
   cartCount: number;
@@ -22,6 +23,7 @@ interface ActionMenuProps {
 export function ActionMenu({
   onShowNotifications,
   onResetLocation,
+  onManageAddress,
   onShowCart,
   hasNotifications,
   cartCount,
@@ -207,7 +209,7 @@ export function ActionMenu({
           {/* Location Icon */}
           <button
             onClick={() => {
-              onResetLocation();
+              onManageAddress();
               setIsOpen(false);
             }}
             style={{
@@ -215,7 +217,7 @@ export function ActionMenu({
               animation: 'menu-slide-down 0.3s cubic-bezier(0.22, 1, 0.36, 1) both',
               animationDelay: '0.2s',
             }}
-            aria-label="Reset location"
+            aria-label="Manage delivery address"
           >
             <Location variant="Linear" color="var(--color-white)" size={24} />
           </button>

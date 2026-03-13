@@ -192,6 +192,44 @@ async def generate_checkout_link(
             ),
         }
 
+    if not auth_session_id:
+        return {
+            "status": "error",
+            "data": {},
+            "message": "Session not established. Please reconnect.",
+        }
+
+    # Enforce delivery address before checkout so paid orders are deliverable.
+    from backend.db.rls import rls_context
+    try:
+        async with rls_context(auth_session_id, phone=phone) as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT delivery_address
+                  FROM public.carts
+                 WHERE phone = $1
+                """,
+                phone,
+            )
+    except Exception as db_exc:
+        logger.error("generate_checkout_link: failed to load cart address: %s", db_exc)
+        return {
+            "status": "error",
+            "data": {},
+            "message": "Could not verify your delivery address. Please try again.",
+        }
+
+    delivery_address = ((row["delivery_address"] if row else "") or "").strip()
+    if len(delivery_address) < 8:
+        return {
+            "status": "error",
+            "data": {},
+            "message": (
+                "Please add your delivery address before checkout. "
+                "Open the location menu and fill in your full delivery address."
+            ),
+        }
+
     secret_key = os.environ.get("PAYSTACK_SECRET_KEY", "").strip()
     if not secret_key:
         return {
@@ -230,35 +268,29 @@ async def generate_checkout_link(
     # Persist checkout_url and payment_reference to the carts table via asyncpg.
     # Non-fatal: we return the checkout URL even if DB persistence fails so the
     # farmer can still complete payment.
-    if auth_session_id:
-        from backend.db.rls import rls_context
-        try:
-            async with rls_context(auth_session_id, phone=phone) as conn:
-                await conn.execute(
-                    """
-                    INSERT INTO public.carts
-                        (phone, checkout_url, payment_reference, status, session_id)
-                    VALUES ($1, $2, $3, 'pending_payment', $4)
-                    ON CONFLICT (phone) DO UPDATE
-                        SET checkout_url      = EXCLUDED.checkout_url,
-                            payment_reference = EXCLUDED.payment_reference,
-                            status            = 'pending_payment',
-                            session_id        = EXCLUDED.session_id,
-                            updated_at        = NOW()
-                    """,
-                    phone,
-                    checkout_url,
-                    reference,
-                    auth_session_id,
-                )
-        except Exception as db_exc:
-            logger.error(
-                "generate_checkout_link: failed to persist checkout_url to carts: %s",
-                db_exc,
+    try:
+        async with rls_context(auth_session_id, phone=phone) as conn:
+            await conn.execute(
+                """
+                INSERT INTO public.carts
+                    (phone, checkout_url, payment_reference, status, session_id)
+                VALUES ($1, $2, $3, 'pending_payment', $4)
+                ON CONFLICT (phone) DO UPDATE
+                    SET checkout_url      = EXCLUDED.checkout_url,
+                        payment_reference = EXCLUDED.payment_reference,
+                        status            = 'pending_payment',
+                        session_id        = EXCLUDED.session_id,
+                        updated_at        = NOW()
+                """,
+                phone,
+                checkout_url,
+                reference,
+                auth_session_id,
             )
-    else:
-        logger.warning(
-            "generate_checkout_link: no auth_session_id in state — cart not persisted"
+    except Exception as db_exc:
+        logger.error(
+            "generate_checkout_link: failed to persist checkout_url to carts: %s",
+            db_exc,
         )
 
     # Write to session state

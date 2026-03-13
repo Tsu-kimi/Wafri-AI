@@ -8,7 +8,6 @@ constants below, plus the fields defined in each TypedDict.
 
 Phase 5 contract — these type strings are stable:
     AUDIO_FLUSH            — browser must discard its audio queue immediately
-    TRANSCRIPTION          — speech-to-text for user or agent speech
     TURN_COMPLETE          — agent has finished its response turn
     PRODUCTS_RECOMMENDED   — product cards to render in the UI
     CART_UPDATED           — shopping-cart state refresh
@@ -30,7 +29,6 @@ from typing import Any, List, Optional
 # ---------------------------------------------------------------------------
 
 T_AUDIO_FLUSH          = "AUDIO_FLUSH"
-T_TRANSCRIPTION        = "TRANSCRIPTION"
 T_TURN_COMPLETE        = "TURN_COMPLETE"
 T_PRODUCTS_RECOMMENDED = "PRODUCTS_RECOMMENDED"
 T_CART_UPDATED         = "CART_UPDATED"
@@ -51,21 +49,6 @@ T_PAYMENT_CONFIRMED    = "PAYMENT_CONFIRMED"
 
 def audio_flush_event() -> dict:
     return {"type": T_AUDIO_FLUSH}
-
-
-def transcription_event(text: str, author: str, is_final: bool = False) -> dict:
-    """
-    Args:
-        text    — the transcribed text fragment
-        author  — "user" for input transcription, agent name for output
-        is_final — True when this is the final (non-partial) transcription
-    """
-    return {
-        "type":     T_TRANSCRIPTION,
-        "text":     text,
-        "author":   author,
-        "is_final": is_final,
-    }
 
 
 def turn_complete_event() -> dict:
@@ -207,6 +190,7 @@ def scanning_product_event(message: str = "") -> dict:
 
 def payment_confirmed_event(
     payment_reference: str,
+    amount_ngn: float,
     message: str = "",
 ) -> dict:
     """
@@ -217,5 +201,6 @@ def payment_confirmed_event(
     return {
         "type":              T_PAYMENT_CONFIRMED,
         "payment_reference": payment_reference,
+        "amount_ngn":        amount_ngn,
         "message":           message or "Your payment has been confirmed.",
     }

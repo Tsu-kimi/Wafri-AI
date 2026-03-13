@@ -95,6 +95,15 @@ class OtpVerifyResponse(BaseModel):
     message: str
 
 
+class DeliveryAddressRequest(BaseModel):
+    address: str = Field(..., min_length=8, max_length=240)
+
+
+class DeliveryAddressResponse(BaseModel):
+    address: Optional[str]
+    message: str
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 
@@ -332,3 +341,57 @@ async def verify_otp_and_reset_pin(
     await transition_to_active(session_id)
     log.info("pin_reset_complete", extra={"session_id": session_id})
     return {"ok": True, "message": "PIN reset successfully. You can now log in."}
+
+
+@router.get(
+    "/delivery-address",
+    status_code=status.HTTP_200_OK,
+    response_model=DeliveryAddressResponse,
+    summary="Get saved delivery address for logged-in farmer",
+)
+async def get_delivery_address(
+    session_id: str = Depends(get_session),
+) -> dict:
+    try:
+        address = await farmer_service.get_delivery_address(session_id=session_id)
+    except Exception:
+        log.exception("get_delivery_address_failed", extra={"session_id": session_id})
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not load delivery address. Please try again.",
+        )
+
+    return {
+        "address": address,
+        "message": "Delivery address loaded.",
+    }
+
+
+@router.put(
+    "/delivery-address",
+    status_code=status.HTTP_200_OK,
+    response_model=DeliveryAddressResponse,
+    summary="Save delivery address for logged-in farmer",
+)
+async def set_delivery_address(
+    body: DeliveryAddressRequest,
+    session_id: str = Depends(get_session),
+) -> dict:
+    try:
+        address = await farmer_service.set_delivery_address(
+            session_id=session_id,
+            address=body.address,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except Exception:
+        log.exception("set_delivery_address_failed", extra={"session_id": session_id})
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not save delivery address. Please try again.",
+        )
+
+    return {
+        "address": address,
+        "message": "Delivery address saved.",
+    }

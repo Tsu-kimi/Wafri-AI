@@ -1,6 +1,8 @@
 # Python virtual environments
 .venv/
+.venv-1/
 venv/
+venv-1/
 ENV/
 
 # Byte-compiled / optimized / DLL files

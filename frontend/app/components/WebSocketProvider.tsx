@@ -102,6 +102,14 @@ interface SessionIds {
   sessionId: string;
 }
 
+function normalizeWsBaseUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('ws://') || trimmed.startsWith('wss://')) return trimmed;
+  if (trimmed.startsWith('http://')) return `ws://${trimmed.slice('http://'.length)}`;
+  if (trimmed.startsWith('https://')) return `wss://${trimmed.slice('https://'.length)}`;
+  return trimmed;
+}
+
 /** Read existing IDs from localStorage/sessionStorage or create new ones. */
 function getOrCreateIds(): SessionIds {
   // If AuthScreen has set a phone number, use that as the stable userId.
@@ -132,11 +140,12 @@ function getOrCreateIds(): SessionIds {
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
-  const wsBaseUrl =
+  const wsBaseUrl = normalizeWsBaseUrl(
     process.env.NEXT_PUBLIC_WS_URL ??
-    (process.env.NODE_ENV === 'production'
-      ? 'https://fieldvet-backend-1041869895037.us-central1.run.app'
-      : 'ws://localhost:8000');
+      (process.env.NODE_ENV === 'production'
+        ? 'https://fieldvet-backend-1041869895037.us-central1.run.app'
+        : 'ws://localhost:8000'),
+  );
 
   /**
    * Session IDs are initialised in useEffect (client-only) to avoid

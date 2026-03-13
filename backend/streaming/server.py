@@ -206,13 +206,14 @@ app = FastAPI(
 _allowed_origins: list[str] = [
     "https://wafrivet-field-vet.vercel.app",
     "http://localhost:3000",
+    # LAN dev (mobile testing) — set to the host machine's Wi‑Fi IP
 ]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
     allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,  # Required for HttpOnly cookie to be sent cross-origin
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
 

@@ -162,14 +162,20 @@ async def process_payment_confirmed(
                 "payment_already_processed",
                 extra={"cart_id": cart_id, "status": current_status},
             )
-            _publish_payment_event(session_id, ref)
+            _publish_payment_event(session_id, ref, amount_ngn)
             return True
 
-        # Update to payment_received.
+        # Mark payment received and clear the active cart items.
+        # This keeps post-payment cart behaviour consistent with e-commerce
+        # expectations: purchased items should no longer remain in cart.
         await conn.execute(
             """
             UPDATE public.carts
                SET status     = 'payment_received',
+                   items_json  = '[]'::jsonb,
+                   total_amount = 0,
+                   checkout_url = NULL,
+                   payment_reference = NULL,
                    updated_at = $1
              WHERE id = $2
             """,
@@ -189,11 +195,15 @@ async def process_payment_confirmed(
 
     # Publish the PAYMENT_CONFIRMED event to Redis so the WebSocket bridge
     # can deliver it to the farmer's active session.
-    _publish_payment_event(session_id, ref)
+    _publish_payment_event(session_id, ref, amount_ngn)
     return True
 
 
-def _publish_payment_event(session_id: Optional[str], payment_reference: str) -> None:
+def _publish_payment_event(
+    session_id: Optional[str],
+    payment_reference: str,
+    amount_ngn: float,
+) -> None:
     """
     Publish a PAYMENT_CONFIRMED JSON message to Redis pub/sub.
 
@@ -213,10 +223,13 @@ def _publish_payment_event(session_id: Optional[str], payment_reference: str) ->
         async def _pub() -> None:
             redis = get_redis()
             channel = f"session:{session_id}"
-            message = json.dumps({
-                "type": "PAYMENT_CONFIRMED",
-                "payment_reference": payment_reference,
-            })
+            message = json.dumps(
+                {
+                    "type": "PAYMENT_CONFIRMED",
+                    "payment_reference": payment_reference,
+                    "amount_ngn": amount_ngn,
+                }
+            )
             await redis.publish(channel, message)
             log.info(
                 "payment_confirmed_published",
@@ -225,7 +238,6 @@ def _publish_payment_event(session_id: Optional[str], payment_reference: str) ->
 
         # The publish is fire-and-forget within the BackgroundTask coroutine.
         # create_task schedules it on the running event loop without blocking.
-        loop = asyncio.get_event_loop()
-        loop.create_task(_pub())
+        asyncio.create_task(_pub())
     except Exception as exc:  # noqa: BLE001
         log.error("redis_publish_failed", extra={"error": str(exc)})

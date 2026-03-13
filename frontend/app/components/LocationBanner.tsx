@@ -272,7 +272,7 @@ export function LocationBanner({
               }}
               aria-label={`Confirm location as ${detectedState}`}
             >
-              ✓ Yes, that's me
+              ✓ Yes, that&apos;s me
             </button>
             <button
               onClick={() => {

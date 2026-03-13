@@ -214,6 +214,7 @@ def recommend_products(
             "id": str(row.get("id", "")),
             "name": str(row.get("name", "")),
             "base_price": float(row.get("base_price", 0)),
+            "price_ngn": float(row.get("base_price", 0)),
             "image_url": str(row.get("image_url", "")),
             "description": str(row.get("description", "")),
             "dosage_notes": str(row.get("dosage_notes", "")),

@@ -63,7 +63,6 @@ from backend.streaming.events import (
     checkout_link_event,
     clinics_found_event,
     location_confirmed_event,
-    order_confirmed_event,
     payment_confirmed_event,
     products_recommended_event,
     scanning_product_event,
@@ -443,9 +442,13 @@ async def _redis_payment_subscriber(
 
             if msg_type == "PAYMENT_CONFIRMED":
                 ref: str = payload.get("payment_reference", "")
+                amount_ngn = float(payload.get("amount_ngn") or 0)
                 try:
                     await websocket.send_json(
-                        payment_confirmed_event(payment_reference=ref)
+                        payment_confirmed_event(
+                            payment_reference=ref,
+                            amount_ngn=amount_ngn,
+                        )
                     )
                     log_fn("info", f"PAYMENT_CONFIRMED delivered: {ref!r}", "PAYMENT_CONFIRMED")
                 except Exception as send_exc:
@@ -625,16 +628,6 @@ async def _route_tool_response(
             log_fn("info", "CART_UPDATED (update_cart)", "CART_UPDATED")
 
         elif tool_name == "place_order":
-            await websocket.send_json(
-                order_confirmed_event(
-                    order_reference=data.get("order_reference", ""),
-                    total=data.get("total", 0.0),
-                    items=data.get("items", []),
-                    estimated_delivery=data.get("estimated_delivery", "24–48 hours"),
-                    sms_sent=data.get("sms_sent", False),
-                    message=message,
-                )
-            )
             logger.info(
                 {
                     "event": "tool_call",
@@ -645,7 +638,11 @@ async def _route_tool_response(
                     "session_id": session_id,
                 }
             )
-            log_fn("info", f"ORDER_CONFIRMED: {data.get('order_reference', '')}", "ORDER_CONFIRMED")
+            log_fn(
+                "info",
+                "place_order acknowledged; waiting for PAYMENT_CONFIRMED webhook before UI confirmation",
+                "PLACE_ORDER",
+            )
 
         # ── Phase 5 tool routes ─────────────────────────────────────────────────
 

@@ -58,12 +58,12 @@ export function FieldVetSession() {
     cartItems,
     cartTotal,
     checkoutUrl,
+    payment_reference,
     clinics,
     clinicsFallbackMessage,
     confirmedLocation,
     lastError,
     isScanningProduct,
-    orderConfirmed,
     paymentConfirmed,
     sendAudio,
     sendImage,
@@ -119,7 +119,7 @@ export function FieldVetSession() {
 
   // Reset both flags on reconnect so location is re-sent after a session drop.
   useEffect(() => {
-    if (connectionState === 'connecting') {
+    if (connectionState === 'connecting' || connectionState === 'reconnecting') {
       gpsSentRef.current = false;
       stateSentRef.current = false;
     }
@@ -134,16 +134,91 @@ export function FieldVetSession() {
   const effectiveConfirmedLocation = confirmedLocation || localConfirmedLocation;
 
   // ── Error Logging & Notifications ───────────────────────────────────────────
-  const [errorLog, setErrorLog] = useState<{ id: number, message: string, time: Date }[]>([]);
+  const [notifications, setNotifications] = useState<
+    { id: number; message: string; time: Date; level: 'error' | 'success' }[]
+  >([]);
   const [toastError, setToastError] = useState<string | null>(null);
   const [isToastVisible, setIsToastVisible] = useState(false);
   const [showErrorLog, setShowErrorLog] = useState(false);
+  const [showOrderToast, setShowOrderToast] = useState(false);
+
+  // ── Delivery address modal state ───────────────────────────────────────────
+  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [addressLoading, setAddressLoading] = useState(false);
+  const [addressSaving, setAddressSaving] = useState(false);
+  const [addressError, setAddressError] = useState<string | null>(null);
+
+  const API_BASE =
+    process.env.NEXT_PUBLIC_API_URL ??
+    (process.env.NODE_ENV === 'production'
+      ? 'https://fieldvet-backend-1041869895037.us-central1.run.app'
+      : 'http://localhost:8000');
+
+  const loadDeliveryAddress = useCallback(async () => {
+    setAddressLoading(true);
+    setAddressError(null);
+    try {
+      const resp = await fetch(`${API_BASE}/farmers/delivery-address`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+      if (!resp.ok) {
+        throw new Error('Could not load address');
+      }
+      const data = (await resp.json()) as { address?: string | null };
+      setDeliveryAddress(data.address ?? '');
+    } catch {
+      setAddressError('Could not load your saved address. You can still enter a new one.');
+    } finally {
+      setAddressLoading(false);
+    }
+  }, [API_BASE]);
+
+  const saveDeliveryAddress = useCallback(async () => {
+    const trimmed = deliveryAddress.trim();
+    if (trimmed.length < 8) {
+      setAddressError('Please enter a full delivery address (minimum 8 characters).');
+      return;
+    }
+
+    setAddressSaving(true);
+    setAddressError(null);
+    try {
+      const resp = await fetch(`${API_BASE}/farmers/delivery-address`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ address: trimmed }),
+      });
+      if (!resp.ok) {
+        throw new Error('Could not save address');
+      }
+
+      setShowAddressModal(false);
+      setNotifications((prev) => [
+        ...prev,
+        { id: Date.now(), message: 'Delivery address saved.', time: new Date(), level: 'success' },
+      ]);
+    } catch {
+      setAddressError('Could not save delivery address. Please try again.');
+    } finally {
+      setAddressSaving(false);
+    }
+  }, [API_BASE, deliveryAddress]);
 
   useEffect(() => {
     if (lastError) {
       setToastError(lastError);
       setIsToastVisible(true);
-      setErrorLog((prev) => [...prev, { id: Date.now(), message: lastError, time: new Date() }]);
+      setNotifications((prev) => [
+        ...prev,
+        { id: Date.now(), message: lastError, time: new Date(), level: 'error' },
+      ]);
+
+      if (lastError.toLowerCase().includes('delivery address')) {
+        setShowAddressModal(true);
+      }
 
       // Step 1: Trigger the CSS exit animation at 4.5 seconds
       const hideTimer = setTimeout(() => {
@@ -161,7 +236,31 @@ export function FieldVetSession() {
         clearTimeout(clearTimer);
       };
     }
-  }, [lastError]);
+  }, [lastError, clearError]);
+
+  useEffect(() => {
+    if (!paymentConfirmed) return;
+
+    setShowOrderToast(true);
+    setNotifications((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        message: `Order confirmed. Payment ref ${paymentConfirmed.payment_reference}`,
+        time: new Date(),
+        level: 'success',
+      },
+    ]);
+
+    const timer = setTimeout(() => {
+      setShowOrderToast(false);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [paymentConfirmed]);
+
+  useEffect(() => {
+    void loadDeliveryAddress();
+  }, [loadDeliveryAddress]);
 
   // ── Media pipeline ──────────────────────────────────────────────────────────
   const {
@@ -309,8 +408,8 @@ export function FieldVetSession() {
         </div>
       )}
 
-      {/* ── Order confirmed banner (z=62) ─────────────────────────────────── */}
-      {orderConfirmed && (
+      {/* ── Order confirmed toast (2 seconds) ─────────────────────────────── */}
+      {showOrderToast && paymentConfirmed && (
         <div
           role="status"
           aria-live="polite"
@@ -320,40 +419,6 @@ export function FieldVetSession() {
             left: '16px',
             right: '16px',
             zIndex: 62,
-            background: 'color-mix(in srgb, var(--color-forest) 95%, transparent)',
-            border: '1.5px solid var(--color-primary)',
-            borderRadius: '14px',
-            padding: '14px 16px',
-            backdropFilter: 'blur(10px)',
-            animation: 'slide-up 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
-          }}
-        >
-          <p style={{ margin: '0 0 2px', fontSize: '11px', fontWeight: 700, color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            ✓ Order confirmed
-          </p>
-          <p style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 800, color: 'var(--color-white)' }}>
-            Ref: {orderConfirmed.order_reference}
-          </p>
-          <p style={{ margin: 0, fontSize: '12px', color: 'var(--color-text-muted)' }}>
-            ₦{orderConfirmed.total.toLocaleString('en-NG')} · Delivery: {orderConfirmed.estimated_delivery}
-            {orderConfirmed.sms_sent && ' · SMS sent ✓'}
-          </p>
-        </div>
-      )}
-
-      {/* ── Payment confirmed banner (z=63) ─────────────────────────────────── */}
-      {paymentConfirmed && (
-        <div
-          role="status"
-          aria-live="polite"
-          style={{
-            position: 'absolute',
-            top: orderConfirmed
-              ? 'calc(130px + var(--spacing-safe-top))'
-              : 'calc(16px + var(--spacing-safe-top))',
-            left: '16px',
-            right: '16px',
-            zIndex: 63,
             background: 'color-mix(in srgb, #14532d 95%, transparent)',
             border: '1.5px solid #22c55e',
             borderRadius: '14px',
@@ -363,10 +428,10 @@ export function FieldVetSession() {
           }}
         >
           <p style={{ margin: '0 0 2px', fontSize: '11px', fontWeight: 700, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            ✓ Payment received
+            ✓ Order confirmed
           </p>
           <p style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: 800, color: 'var(--color-white)' }}>
-            ₦{paymentConfirmed.amount_ngn.toLocaleString('en-NG')} confirmed
+            ₦{paymentConfirmed.amount_ngn.toLocaleString('en-NG')} payment confirmed
           </p>
           <p style={{ margin: 0, fontSize: '12px', color: 'var(--color-text-muted)' }}>
             Ref: {paymentConfirmed.payment_reference}
@@ -386,8 +451,12 @@ export function FieldVetSession() {
         <ActionMenu
           onShowNotifications={() => setShowErrorLog(true)}
           onResetLocation={handleResetLocation}
+          onManageAddress={() => {
+            setShowAddressModal(true);
+            void loadDeliveryAddress();
+          }}
           onShowCart={handleShowCart}
-          hasNotifications={errorLog.length > 0}
+          hasNotifications={notifications.length > 0}
           cartCount={cartItems.length}
           cartTotal={cartTotal}
         />
@@ -424,14 +493,14 @@ export function FieldVetSession() {
               <CloseSquare size={24} color="var(--color-text-muted)" />
             </button>
           </div>
-          {errorLog.length === 0 ? (
+          {notifications.length === 0 ? (
             <p style={{ color: 'var(--color-text-muted)', fontSize: '14px', margin: 0 }}>No errors reported.</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {errorLog.slice().reverse().map((err) => (
-                <div key={err.id} style={{ background: 'color-mix(in srgb, var(--color-error) 12%, transparent)', padding: '10px', borderRadius: '8px', borderLeft: '3px solid var(--color-error)' }}>
-                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--color-text)' }}>{err.message}</p>
-                  <p style={{ margin: '4px 0 0', fontSize: '10px', color: 'var(--color-text-muted)' }}>{err.time.toLocaleTimeString()}</p>
+              {notifications.slice().reverse().map((entry) => (
+                <div key={entry.id} style={{ background: entry.level === 'error' ? 'color-mix(in srgb, var(--color-error) 12%, transparent)' : 'color-mix(in srgb, var(--color-primary) 16%, transparent)', padding: '10px', borderRadius: '8px', borderLeft: `3px solid ${entry.level === 'error' ? 'var(--color-error)' : 'var(--color-primary)'}` }}>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--color-text)' }}>{entry.message}</p>
+                  <p style={{ margin: '4px 0 0', fontSize: '10px', color: 'var(--color-text-muted)' }}>{entry.time.toLocaleTimeString()}</p>
                 </div>
               ))}
             </div>
@@ -539,7 +608,100 @@ export function FieldVetSession() {
             animation: 'slide-up 0.35s cubic-bezier(0.22, 1, 0.36, 1)',
           }}
         >
-          <PayButton cartTotal={cartTotal} />
+          <PayButton cartTotal={cartTotal} paymentReference={payment_reference ?? ''} />
+        </div>
+      )}
+
+      {/* ── Delivery address modal ───────────────────────────────────────── */}
+      {showAddressModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Delivery address"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 110,
+            background: 'rgba(0,0,0,0.55)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '460px',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              borderRadius: '16px',
+              padding: '18px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+            }}
+          >
+            <h3 style={{ margin: 0, color: 'var(--color-text)', fontFamily: 'var(--font-fraunces)', fontSize: '20px' }}>
+              Delivery Address
+            </h3>
+            <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '13px', lineHeight: 1.5 }}>
+              Add the full address where your order should be delivered. Checkout is blocked until this is set.
+            </p>
+            <textarea
+              value={deliveryAddress}
+              onChange={(e) => setDeliveryAddress(e.target.value)}
+              placeholder="House number, street, landmark, LGA, state"
+              rows={4}
+              disabled={addressLoading || addressSaving}
+              style={{
+                width: '100%',
+                resize: 'vertical',
+                minHeight: '110px',
+                background: 'var(--color-bg)',
+                color: 'var(--color-text)',
+                border: '1px solid var(--color-border)',
+                borderRadius: '12px',
+                padding: '12px',
+                fontSize: '14px',
+              }}
+            />
+            {addressError && (
+              <p style={{ margin: 0, color: 'var(--color-error)', fontSize: '12px' }}>{addressError}</p>
+            )}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowAddressModal(false)}
+                disabled={addressSaving}
+                style={{
+                  minHeight: '44px',
+                  padding: '0 14px',
+                  borderRadius: '10px',
+                  border: '1px solid var(--color-border)',
+                  background: 'transparent',
+                  color: 'var(--color-text)',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void saveDeliveryAddress()}
+                disabled={addressLoading || addressSaving}
+                style={{
+                  minHeight: '44px',
+                  padding: '0 14px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: 'var(--color-primary)',
+                  color: 'var(--color-white)',
+                  fontWeight: 700,
+                }}
+              >
+                {addressSaving ? 'Saving…' : 'Save Address'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

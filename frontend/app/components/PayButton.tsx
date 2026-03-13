@@ -28,10 +28,13 @@ import { Wallet } from 'iconsax-react';
 export interface PayButtonProps {
   /** Cart total in NGN — converted to kobo (×100) when calling Paystack. */
   cartTotal: number;
+  /** Backend-issued Paystack reference from CHECKOUT_LINK event. */
+  paymentReference: string;
+  /** Optional callback when Paystack client reports immediate success. */
+  onPaymentInitiated?: (reference: string) => void;
 }
 
-export function PayButton({ cartTotal }: PayButtonProps) {
-  const [showSuccess, setShowSuccess] = useState(false);
+export function PayButton({ cartTotal, paymentReference, onPaymentInitiated }: PayButtonProps) {
   const [isLoading,   setIsLoading]   = useState(false);
   const paystackKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY ?? '';
 
@@ -41,6 +44,11 @@ export function PayButton({ cartTotal }: PayButtonProps) {
         '[PayButton] NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY is not set. ' +
           'Add it to .env.local (or Vercel project settings) and rebuild.',
       );
+      return;
+    }
+
+    if (!paymentReference) {
+      console.warn('[PayButton] Missing payment reference from CHECKOUT_LINK event.');
       return;
     }
 
@@ -57,10 +65,11 @@ export function PayButton({ cartTotal }: PayButtonProps) {
         email: 'farmer@wafrivet.com',
         amount: Math.round(cartTotal * 100), // NGN → kobo
         currency: 'NGN',
+        ref: paymentReference,
         metadata: { source: 'wafrivet-field-vet', version: '1.0' },
         onSuccess: () => {
           setIsLoading(false);
-          setShowSuccess(true);
+          onPaymentInitiated?.(paymentReference);
         },
         onCancel: () => {
           // User dismissed popup without paying.
@@ -120,96 +129,6 @@ export function PayButton({ cartTotal }: PayButtonProps) {
             : `Pay ₦${cartTotal.toLocaleString('en-NG')} Now`}
         </span>
       </button>
-
-      {/* ── Payment success overlay ───────────────────────────────────── */}
-      {showSuccess && (
-        <div
-          role="alertdialog"
-          aria-modal="true"
-          aria-label="Payment successful"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'color-mix(in srgb, var(--color-bg) 94%, transparent)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '22px',
-            zIndex: 200,
-            padding: '32px 24px',
-            animation: 'fade-in 0.3s ease',
-          }}
-        >
-          {/* Success icon */}
-          <div
-            aria-hidden
-            style={{
-              width: '88px',
-              height: '88px',
-              borderRadius: '50%',
-              background: 'color-mix(in srgb, var(--color-primary) 18%, transparent)',
-              border: '3px solid var(--color-primary)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '40px',
-              color: 'var(--color-primary)',
-              boxShadow: '0 0 40px color-mix(in srgb, var(--color-primary) 30%, transparent)',
-            }}
-          >
-            ✓
-          </div>
-
-          <h2
-            style={{
-              fontSize: '26px',
-              fontFamily: 'var(--font-fraunces)',
-              fontWeight: 800,
-              color: 'var(--color-text)',
-              textAlign: 'center',
-              margin: 0,
-              lineHeight: 1.2,
-            }}
-          >
-            Payment Successful!
-          </h2>
-
-          <p
-            style={{
-              fontSize: '15px',
-              color: 'var(--color-text-muted)',
-              textAlign: 'center',
-              lineHeight: 1.65,
-              maxWidth: '320px',
-              margin: 0,
-            }}
-          >
-            Your order has been placed. A veterinary supplier will contact you
-            to arrange delivery of your products.
-          </p>
-
-          <button
-            onClick={() => setShowSuccess(false)}
-            style={{
-              background: 'var(--color-primary)',
-              color: 'var(--color-white)',
-              border: 'none',
-              borderRadius: '14px',
-              padding: '0 36px',
-              fontSize: '16px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              minHeight: '56px',
-              minWidth: '180px',
-              boxShadow: '0 4px 20px color-mix(in srgb, var(--color-primary) 40%, transparent)',
-              touchAction: 'manipulation',
-            }}
-          >
-            Done
-          </button>
-        </div>
-      )}
     </>
   );
 }

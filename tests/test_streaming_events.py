@@ -11,7 +11,6 @@ Coverage:
       * AUDIO_FLUSH emitted on event.interrupted
       * is_interrupted suppresses content events until turn_complete
       * TURN_COMPLETE emitted on event.turn_complete
-      * TRANSCRIPTION emitted for input/output transcription events
       * PRODUCTS_RECOMMENDED emitted on recommend_products response
       * CART_UPDATED emitted on manage_cart response
       * CHECKOUT_LINK emitted on generate_checkout_link response
@@ -44,7 +43,6 @@ from backend.streaming.events import (
     T_LOCATION_CONFIRMED,
     T_PRODUCTS_RECOMMENDED,
     T_TOOL_ERROR,
-    T_TRANSCRIPTION,
     T_TURN_COMPLETE,
     audio_flush_event,
     cart_updated_event,
@@ -52,7 +50,6 @@ from backend.streaming.events import (
     location_confirmed_event,
     products_recommended_event,
     tool_error_event,
-    transcription_event,
     turn_complete_event,
 )
 
@@ -135,13 +132,6 @@ class TestEventFactories:
 
     def test_turn_complete_type(self):
         assert turn_complete_event()["type"] == T_TURN_COMPLETE
-
-    def test_transcription_fields(self):
-        ev = transcription_event("hello", author="user", is_final=True)
-        assert ev["type"]     == T_TRANSCRIPTION
-        assert ev["text"]     == "hello"
-        assert ev["author"]   == "user"
-        assert ev["is_final"] is True
 
     def test_products_recommended_fields(self):
         prods = [{"id": "p1", "name": "OxyMax", "price_ngn": 3500}]
@@ -264,26 +254,6 @@ class TestBridgeDownstream:
         ]
         ws = await self._run_with_events(*events)
         assert len(ws.sent_bytes) == 1
-
-    async def test_input_transcription_sent(self):
-        tr = _make_transcription("My goat is sick", is_partial=False)
-        ev = _make_event(input_transcription=tr)
-        ws = await self._run_with_events(ev)
-        types_sent = [e["type"] for e in ws.sent_json]
-        assert T_TRANSCRIPTION in types_sent
-        tr_ev = next(e for e in ws.sent_json if e["type"] == T_TRANSCRIPTION)
-        assert tr_ev["author"]  == "user"
-        assert tr_ev["text"]    == "My goat is sick"
-        assert tr_ev["is_final"] is True
-
-    async def test_output_transcription_sent(self):
-        tr = _make_transcription("Treating bloat with Bloateze", is_partial=False)
-        ev = _make_event(output_transcription=tr)
-        ws = await self._run_with_events(ev)
-        types_sent = [e["type"] for e in ws.sent_json]
-        assert T_TRANSCRIPTION in types_sent
-        tr_ev = next(e for e in ws.sent_json if e["type"] == T_TRANSCRIPTION)
-        assert tr_ev["author"] != "user"
 
     async def test_products_recommended_event(self):
         products = [

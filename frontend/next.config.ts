@@ -1,6 +1,11 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  // Mobile/LAN dev: allow the dev server to be accessed from the host's LAN IP.
+  // This avoids Next's cross-origin dev warning for /_next/* resources.
+  allowedDevOrigins: [
+    'http://localhost:3000',
+  ],
   images: {
     remotePatterns: [
       // ── Supabase Storage — product images migrated to object storage ──────

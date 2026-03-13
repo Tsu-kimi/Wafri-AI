@@ -270,6 +270,103 @@ async def lookup_with_history(
     }
 
 
+async def _resolve_phone_from_session(session_id: str) -> str | None:
+    """Return the phone number linked to the authenticated session, if any."""
+    async with rls_context(session_id) as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT phone_number
+              FROM public.sessions
+             WHERE session_id = $1
+            """,
+            session_id,
+        )
+
+    if not row or not row["phone_number"]:
+        return None
+    return str(row["phone_number"])
+
+
+async def get_delivery_address(session_id: str) -> str | None:
+    """
+    Fetch the latest saved delivery address for the logged-in farmer session.
+
+    Returns None when no phone is linked to the session or no address exists yet.
+    """
+    phone = await _resolve_phone_from_session(session_id)
+    if not phone:
+        return None
+
+    async with rls_context(session_id, phone=phone) as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT delivery_address
+              FROM public.carts
+             WHERE phone = $1
+            """,
+            phone,
+        )
+
+    if not row:
+        return None
+
+    addr = (row["delivery_address"] or "").strip()
+    return addr or None
+
+
+async def set_delivery_address(session_id: str, address: str) -> str:
+    """
+    Save delivery address for the logged-in farmer's phone number.
+
+    If a cart row exists for the phone, update it in-place.
+    If no cart row exists yet, create an empty active cart row with the address.
+    """
+    normalized = (address or "").strip()
+    if len(normalized) < 8:
+        raise ValueError("Delivery address must be at least 8 characters.")
+    if len(normalized) > 240:
+        raise ValueError("Delivery address is too long. Keep it under 240 characters.")
+
+    phone = await _resolve_phone_from_session(session_id)
+    if not phone:
+        raise ValueError("No farmer phone is linked to this session yet.")
+
+    async with rls_context(session_id, phone=phone) as conn:
+        row = await conn.fetchrow(
+            "SELECT id FROM public.carts WHERE phone = $1",
+            phone,
+        )
+
+        if row:
+            await conn.execute(
+                """
+                UPDATE public.carts
+                   SET delivery_address = $1,
+                       session_id       = $2,
+                       updated_at       = NOW()
+                 WHERE phone = $3
+                """,
+                normalized,
+                session_id,
+                phone,
+            )
+        else:
+            await conn.execute(
+                """
+                INSERT INTO public.carts
+                    (phone, items_json, total_amount, delivery_address, session_id, status)
+                VALUES
+                    ($1, '[]'::jsonb, 0, $2, $3, 'active')
+                """,
+                phone,
+                normalized,
+                session_id,
+            )
+
+    log.info("delivery_address_saved", extra={"session_id": session_id})
+    return normalized
+
+
 async def clear_pin_lock(phone_number: str, session_id: str) -> None:
     """
     Reset failed_pin_attempts and locked_until on successful PIN reset.
