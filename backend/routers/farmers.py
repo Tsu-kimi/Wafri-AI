@@ -260,8 +260,8 @@ async def request_pin_reset(
 
     if not sent:
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="SMS delivery failed. Please check the phone number and try again.",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="SMS service is temporarily unavailable. Please try again shortly.",
         )
 
     log.info("otp_dispatched", extra={"session_id": session_id})

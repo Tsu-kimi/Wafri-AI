@@ -42,6 +42,21 @@ _OTP_TTL_SECONDS = 600  # 10 minutes
 _MAX_OTP_ATTEMPTS = 5
 
 
+def _termii_channels() -> list[str]:
+    """
+    Return ordered Termii channels to try.
+
+    TERMII_CHANNELS can be set as a comma-separated list, e.g.
+    "dnd,generic". Defaults to a resilient fallback order.
+    """
+    configured = os.environ.get("TERMII_CHANNELS", "").strip()
+    if configured:
+        channels = [c.strip() for c in configured.split(",") if c.strip()]
+        if channels:
+            return channels
+    return ["dnd", "generic"]
+
+
 def _otp_key(phone: str) -> str:
     return f"otp:{phone}"
 
@@ -85,41 +100,49 @@ def _send_otp_sms(phone: str, message_suffix: str = "") -> Optional[str]:
         return None
 
     termii_phone = phone.lstrip("+")
-    payload = json.dumps({
-        "api_key": api_key,
-        "to": termii_phone,
-        "from": sender_id,
-        "sms": message_suffix,
-        "type": "plain",
-        "channel": "dnd",
-    }).encode("utf-8")
+    for channel in _termii_channels():
+        payload = json.dumps({
+            "api_key": api_key,
+            "to": termii_phone,
+            "from": sender_id,
+            "sms": message_suffix,
+            "type": "plain",
+            "channel": channel,
+        }).encode("utf-8")
 
-    req = urllib.request.Request(
-        _TERMII_URL,
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-            code = resp.getcode()
-            if 200 <= code < 300:
-                body = resp.read().decode("utf-8", errors="replace")
-                try:
-                    data = json.loads(body)
-                    msg_id: str = data.get("message_id") or data.get("messageId", "")
-                except Exception:  # noqa: BLE001
-                    msg_id = ""
-                log.info("otp_sms_dispatched", extra={"message_id": msg_id})
-                return msg_id
-            log.warning("otp_sms_non_2xx", extra={"status": code})
-            return None
-    except urllib.error.HTTPError as exc:
-        log.error("otp_sms_http_error", extra={"status": exc.code})
-        return None
-    except Exception as exc:  # noqa: BLE001
-        log.error("otp_sms_dispatch_failed", extra={"error": str(exc)})
-        return None
+        req = urllib.request.Request(
+            _TERMII_URL,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+                code = resp.getcode()
+                if 200 <= code < 300:
+                    body = resp.read().decode("utf-8", errors="replace")
+                    try:
+                        data = json.loads(body)
+                        msg_id: str = data.get("message_id") or data.get("messageId", "")
+                    except Exception:  # noqa: BLE001
+                        msg_id = ""
+                    log.info("otp_sms_dispatched", extra={"message_id": msg_id, "channel": channel})
+                    return msg_id
+                log.warning("otp_sms_non_2xx", extra={"status": code, "channel": channel})
+        except urllib.error.HTTPError as exc:
+            response_text = ""
+            try:
+                response_text = exc.read().decode("utf-8", errors="replace")[:300]
+            except Exception:  # noqa: BLE001
+                response_text = ""
+            log.error(
+                "otp_sms_http_error",
+                extra={"status": exc.code, "channel": channel, "response": response_text},
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.error("otp_sms_dispatch_failed", extra={"error": str(exc), "channel": channel})
+
+    return None
 
 
 async def send_reset_otp(phone_number: str) -> bool:
