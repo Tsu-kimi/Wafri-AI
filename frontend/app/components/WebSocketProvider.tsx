@@ -80,21 +80,6 @@ export interface WebSocketContextValue extends SessionState {
   resumeContext: () => void;
   /** Clear the lastError from the session state to allow it to trigger effects again. */
   clearError: () => void;
-  /**
-   * Phase 5: Suspend the AudioContext while the PIN overlay is shown.
-   * Call from PinOverlay on mount so Gemini audio does not play during PIN entry.
-   */
-  suspendAudio: () => void;
-  /**
-   * Phase 5: Resume the AudioContext after the PIN overlay is dismissed.
-   */
-  resumeAudio: () => void;
-  /**
-   * Phase 5: Send a PIN_VERIFIED message to the bridge so it transitions
-   * from AWAITING_PIN → ACTIVE and resumes Gemini audio delivery.
-   * Also updates the local session state (identityVerified = true).
-   */
-  sendPinVerified: (farmerName: string) => void;
 }
 
 const WebSocketContext = createContext<WebSocketContextValue | null>(null);
@@ -147,7 +132,11 @@ function getOrCreateIds(): SessionIds {
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
-  const wsBaseUrl = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:8000';
+  const wsBaseUrl =
+    process.env.NEXT_PUBLIC_WS_URL ??
+    (process.env.NODE_ENV === 'production'
+      ? 'https://fieldvet-backend-1041869895037.us-central1.run.app'
+      : 'ws://localhost:8000');
 
   /**
    * Session IDs are initialised in useEffect (client-only) to avoid
@@ -164,7 +153,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
   // Audio playback — single AudioContext kept alive across flushes.
   // isAISpeaking is true while scheduled source nodes are still playing.
-  const { playChunk, flush, resumeContext, suspendAudio, resumeAudio, isAISpeaking } = useAudioPlayer();
+  const { playChunk, flush, resumeContext, isAISpeaking } = useAudioPlayer();
 
   // WebSocket session — enabled only after IDs are available.
   const {
@@ -176,7 +165,6 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     sendSessionContext,
     sendLocationData,
     clearError,
-    sendPinVerified,
   } = useWebSocketSession({
     wsBaseUrl,
     userId:    ids?.userId    ?? '',
@@ -203,9 +191,6 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       sendLocationData,
       resumeContext,
       clearError,
-      suspendAudio,
-      resumeAudio,
-      sendPinVerified,
     }),
     [
       state,
@@ -219,9 +204,6 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       sendLocationData,
       resumeContext,
       clearError,
-      suspendAudio,
-      resumeAudio,
-      sendPinVerified,
     ],
   );
 

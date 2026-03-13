@@ -3,9 +3,9 @@
 /**
  * app/page.tsx — Root page.
  *
- * Shows the Onboarding carousel only on a new device (first visit).
- * Once the user completes onboarding, a flag is persisted to localStorage
- * so subsequent loads skip straight to FieldVetSession.
+ * Auth gate: redirects unauthenticated users to /login.
+ * Shows the Onboarding carousel only on the first visit after login.
+ * Once onboarding is complete, goes straight to the FieldVetSession.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -21,6 +21,12 @@ export default function Home() {
   const [step, setStep] = useState<'onboarding' | 'auth' | 'session' | null>(null);
 
   useEffect(() => {
+    // Guard: require login before allowing access.
+    const farmer = localStorage.getItem(FARMER_KEY);
+    if (!farmer) {
+      router.replace('/login');
+      return;
+    }
     const alreadyOnboarded = localStorage.getItem(ONBOARDED_KEY) === '1';
     const userIdentity = localStorage.getItem(USER_IDENTITY_KEY);
 

@@ -55,3 +55,8 @@ resources:
     # Increase to 2Gi if Vertex AI embedding responses cause OOM restarts.
     memory: 1Gi
     cpu: "1"
+
+    # ── CORS allowed origins ───────────────────────────────────────────────
+    # Comma-separated list of frontend origins the backend will accept.
+    # Both the Vercel production URL and localhost dev server are included.
+    allowedOrigins: "https://wafrivet-field-vet.vercel.app,http://localhost:3000"

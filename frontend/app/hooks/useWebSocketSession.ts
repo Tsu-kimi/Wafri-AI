@@ -64,10 +64,6 @@ export interface SessionState {
   isScanningProduct: boolean;
   /** Phase 3: set to the confirmed order data after ORDER_CONFIRMED event. */
   orderConfirmed: { order_reference: string; total: number; estimated_delivery: string; sms_sent: boolean; message: string } | null;
-  /** Phase 5: non-null while the PIN overlay should be shown. */
-  pinRequired: { phone_number: string; is_returning: boolean } | null;
-  /** Phase 5: true once PIN has been verified for this session. */
-  identityVerified: boolean;
   /** Phase 5: non-null when a Paystack payment webhook has confirmed payment. */
   paymentConfirmed: { payment_reference: string; amount_ngn: number } | null;
 }
@@ -104,10 +100,7 @@ type ReducerAction =
   | { type: 'CLEAR_ERROR' }
   | { type: 'ORDER_CONFIRMED'; order_reference: string; total: number; estimated_delivery: string; sms_sent: boolean; message: string }
   | { type: 'SCANNING_PRODUCT'; message: string }
-  | { type: 'PIN_REQUIRED'; phone_number: string; is_returning: boolean }
-  | { type: 'IDENTITY_VERIFIED'; farmer_name: string }
-  | { type: 'PAYMENT_CONFIRMED'; payment_reference: string; amount_ngn: number }
-  | { type: 'CLEAR_PIN' };
+  | { type: 'PAYMENT_CONFIRMED'; payment_reference: string; amount_ngn: number };
 
 const INITIAL_STATE: SessionState = {
   connectionState: 'idle',
@@ -124,8 +117,6 @@ const INITIAL_STATE: SessionState = {
   lastError: null,
   isScanningProduct: false,
   orderConfirmed: null,
-  pinRequired: null,
-  identityVerified: false,
   paymentConfirmed: null,
 };
 
@@ -211,23 +202,11 @@ function sessionReducer(state: SessionState, action: ReducerAction): SessionStat
       // Clear scanning indicator when products arrive after a camera scan.
       return { ...state, products: action.products, isScanningProduct: false };
 
-    case 'PIN_REQUIRED':
-      return {
-        ...state,
-        pinRequired: { phone_number: action.phone_number, is_returning: action.is_returning },
-      };
-
-    case 'IDENTITY_VERIFIED':
-      return { ...state, pinRequired: null, identityVerified: true };
-
     case 'PAYMENT_CONFIRMED':
       return {
         ...state,
         paymentConfirmed: { payment_reference: action.payment_reference, amount_ngn: action.amount_ngn },
       };
-
-    case 'CLEAR_PIN':
-      return { ...state, pinRequired: null };
 
     default:
       return state;
@@ -405,18 +384,6 @@ export function useWebSocketSession({
         case 'interrupted':
           break;
 
-        case 'PIN_REQUIRED':
-          dispatch({
-            type: 'PIN_REQUIRED',
-            phone_number: raw.phone_number,
-            is_returning: raw.is_returning,
-          });
-          break;
-
-        case 'IDENTITY_VERIFIED':
-          dispatch({ type: 'IDENTITY_VERIFIED', farmer_name: raw.farmer_name });
-          break;
-
         case 'PAYMENT_CONFIRMED':
           dispatch({
             type: 'PAYMENT_CONFIRMED',
@@ -553,18 +520,6 @@ export function useWebSocketSession({
     dispatch({ type: 'CLEAR_ERROR' });
   }, []);
 
-  /**
-   * Phase 5: After the PIN overlay has processed a successful PIN setup or
-   * verify, call this to notify the backend bridge (transitions from
-   * AWAITING_PIN → ACTIVE) and update the reducer.
-   */
-  const sendPinVerified = useCallback((farmerName: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'PIN_VERIFIED', farmer_name: farmerName }));
-    }
-    dispatch({ type: 'IDENTITY_VERIFIED', farmer_name: farmerName });
-  }, []);
-
   return {
     state,
     sendAudioChunk,
@@ -574,6 +529,5 @@ export function useWebSocketSession({
     sendSessionContext,
     sendLocationData,
     clearError,
-    sendPinVerified,
   };
 }

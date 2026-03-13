@@ -101,15 +101,18 @@ def _build_set_cookie(jwt_value: str, max_age: int = _COOKIE_MAX_AGE) -> bytes:
     """
     Build a Set-Cookie header value bytes with all mandatory security attributes.
 
-    Attributes are HARDCODED — never read from environment variables or config.
-    This ensures the security constraints cannot be weakened by misconfiguration.
+    SameSite=None is required because the frontend (Vercel) and backend (Cloud Run)
+    are on different domains. SameSite=None must be paired with Secure (HTTPS-only),
+    which is always enforced in production. CSRF protection is provided by the CORS
+    allow_origins allowlist (not by SameSite) — only the configured Vercel origin
+    receives Access-Control-Allow-Credentials: true.
     """
     header = (
         f"{COOKIE_NAME}={jwt_value}; "
         f"Path=/; "
         f"HttpOnly; "
         f"Secure; "
-        f"SameSite=Strict; "
+        f"SameSite=None; "
         f"Max-Age={max_age}"
     )
     return header.encode("latin-1")
