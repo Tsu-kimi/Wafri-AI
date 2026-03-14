@@ -1,12 +1,18 @@
 # Wafri AI Project Overview
 
 ## Elevator pitch
-Fatima is a multimodal AI field vet for African farmers: she sees sick animals, speaks local languages, identifies medicines on camera, and places real treatment orders end-to-end over low-bandwidth phones.
+Fatima is a multimodal AI vet assistant for African farmers and clinics: she sees sick animals, speaks local languages, identifies medicines on camera, and places real treatment orders quickly.
 
 ## Inspiration
-Most livestock farmers in West Africa lose animals because veterinary care is far away, drug instructions are hard to interpret, and many farmers cannot rely on text-heavy apps due to literacy and connectivity barriers.
+This project started from a personal experience. I was once asked to restock livestock supplies at home while my mom, who is the main person caring for our birds, handed me a list of required items and several distributor contacts to call.
 
-We wanted to build an AI field vet that works the way farmers already work: point the camera at an animal or medicine bottle, speak naturally in a familiar language, and get practical, safe guidance that leads to a real outcome.
+At first, I did not realize how difficult procurement could be. I spent hours calling different numbers, getting redirected, comparing inconsistent prices, and trying to find who actually had stock available before I could complete the list.
+
+When I searched online for help, I found no platform that truly specialized in this workflow. The system was fragmented across calls, chats, and scattered suppliers.
+
+That experience pushed us to investigate deeper. Through additional research and direct conversations with livestock farmers and veterinary clinics, we validated that this is a widespread, high-friction problem: people lose time and money trying to find trusted supplies at fair prices.
+
+Wafri AI was built to solve exactly that, while also helping with field-level animal care. With Fatima, users can ask for help by voice, show an animal or medicine on camera, compare options quickly, and complete action in minutes.
 
 ## What it does
 Wafri AI introduces Fatima, a real-time multimodal agent that sees, hears, and speaks with farmers like a veterinary assistant in the field.
@@ -14,6 +20,8 @@ Wafri AI introduces Fatima, a real-time multimodal agent that sees, hears, and s
 Farmers can describe symptoms by voice or show animals on camera. Fatima triages the case, explains likely conditions in simple language, and decides whether to recommend treatment products or escalate to nearby clinics.
 
 When a farmer shows an existing medicine bottle or asks for a product, Fatima reads labels, identifies the drug, searches WafriVet inventory, suggests safer or lower-cost options, and places an order linked to the farmer's phone number. Farmers then receive live SMS confirmation.
+
+For veterinary clinics, Fatima works as a procurement copilot: staff can ask for a medicine, compare distributor prices and stock, choose the best option quickly, and place orders without spending hours calling multiple suppliers.
 
 Farmers can also ask about order history in natural language (for example, "the drug I bought last Wednesday"), and Fatima retrieves current status such as paid, shipped, or delivered.
 
@@ -47,9 +55,22 @@ We learned that multimodal AI becomes significantly more useful when treated as 
 
 We also learned that operational details, such as security, session handling, and resilience, are what transform a compelling prototype into a deployable system.
 
+Most importantly, we learned that this kind of agent gives time back to the people who keep food and animal health systems running. Reducing procurement friction and diagnostic delays creates compounding value across the local economy.
+
 ## What's next for Wafri AI
 In the near term, we are expanding language coverage (Pidgin, Hausa, Yoruba, Igbo, and French) and improving triage quality across more livestock species and disease profiles with local veterinary input.
 
-We are integrating additional payment rails and logistics partners so Fatima can autonomously choose the best distributor and delivery pathway per farmer.
+We are integrating additional payment rails and logistics partners so Fatima can autonomously choose the best distributor and delivery pathway per farmer and clinic.
+
+We are also adding clinic-first procurement workflows, including bulk ordering, repeat order templates, and faster price comparison across verified distributors.
 
 Longer term, we will extend access beyond smartphones through USSD and voice-only paths, allowing farmers with basic feature phones to receive fast, AI-powered veterinary support across West Africa.
+
+Our broader vision is to lead the next generation of immersive procurement and assistance agents that can be reconfigured across sectors such as veterinary medicine, human pharmacy, and frontline healthcare supply chains.
+
+We believe Wafri AI can contribute directly to key UN Sustainable Development Goals in Africa:
+- SDG 1 - No Poverty
+- SDG 2 - Zero Hunger
+- SDG 3 - Good Health and Well-Being
+- SDG 8 - Decent Work and Economic Growth
+- SDG 9 - Industry, Innovation and Infrastructure

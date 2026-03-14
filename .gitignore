@@ -39,6 +39,9 @@ htmlcov/
 .tox/
 .pytest_cache_local/
 
+# Project documentation (local only)
+PROJECT_OVERVIEW.md
+
 # Ignore local scripts
 scripts/*.pyc
 

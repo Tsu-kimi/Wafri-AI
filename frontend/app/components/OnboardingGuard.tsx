@@ -14,6 +14,12 @@ export function OnboardingGuard({ children }: OnboardingGuardProps) {
   const [status, setStatus] = useState<'loading' | 'onboarding' | 'ready'>('loading');
 
   useEffect(() => {
+    // Admin routes skip onboarding entirely
+    if (window.location.pathname.startsWith('/admin')) {
+      setStatus('ready');
+      return;
+    }
+
     // Check onboarding status ONCE on mount
     const alreadyOnboarded = localStorage.getItem(ONBOARDED_KEY) === '1';
     
