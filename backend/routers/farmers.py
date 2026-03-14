@@ -32,7 +32,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from backend.auth.dependencies import get_session
 from backend.services import farmer_service, otp_service, pin_service
@@ -121,20 +121,41 @@ class AddressFields(BaseModel):
     city: str = Field(..., min_length=2, max_length=120)
     state: str = Field(..., min_length=2, max_length=120)
     country: str = Field(..., min_length=2, max_length=120)
-    postal_code: str = Field(..., min_length=2, max_length=32)
-    delivery_phone: str = Field(..., min_length=7, max_length=32)
+    postal_code: str = Field(
+        ...,
+        min_length=2,
+        max_length=32,
+        validation_alias=AliasChoices("postal_code", "postalCode"),
+    )
+    delivery_phone: str = Field(
+        ...,
+        min_length=7,
+        max_length=32,
+        validation_alias=AliasChoices("delivery_phone", "deliveryPhone"),
+    )
 
 
 class AddressCreateRequest(AddressFields):
-    set_default: bool = True
+    set_default: bool = Field(
+        True,
+        validation_alias=AliasChoices("set_default", "setDefault"),
+    )
 
 
 class AddressUpdateRequest(AddressFields):
-    set_default: bool = False
+    set_default: bool = Field(
+        False,
+        validation_alias=AliasChoices("set_default", "setDefault"),
+    )
 
 
 class AddressSelectRequest(BaseModel):
-    address_id: str = Field(..., min_length=8, max_length=64)
+    address_id: str = Field(
+        ...,
+        min_length=8,
+        max_length=64,
+        validation_alias=AliasChoices("address_id", "addressId"),
+    )
 
 
 class StructuredAddress(BaseModel):

@@ -271,7 +271,16 @@ async def lookup_with_history(
 
 
 async def _resolve_phone_from_session(session_id: str) -> str | None:
-    """Return the phone number linked to the authenticated session, if any."""
+    """Return the phone number linked to the authenticated session, if any.
+
+    Fallback order is:
+    1) sessions.phone_number
+    2) farmers.phone_number for farmers.session_id
+    3) carts.phone for carts.session_id
+
+    When a fallback source is used, this function heals sessions.phone_number
+    so subsequent lookups are fast and consistent.
+    """
     async with rls_context(session_id) as conn:
         row = await conn.fetchrow(
             """
@@ -282,9 +291,58 @@ async def _resolve_phone_from_session(session_id: str) -> str | None:
             session_id,
         )
 
-    if not row or not row["phone_number"]:
-        return None
-    return str(row["phone_number"])
+        if row and row["phone_number"]:
+            return str(row["phone_number"])
+
+        farmer_row = await conn.fetchrow(
+            """
+            SELECT phone_number
+              FROM public.farmers
+             WHERE session_id = $1
+             ORDER BY updated_at DESC
+             LIMIT 1
+            """,
+            session_id,
+        )
+        if farmer_row and farmer_row["phone_number"]:
+            fallback_phone = str(farmer_row["phone_number"])
+            await conn.execute(
+                """
+                UPDATE public.sessions
+                   SET phone_number = $1,
+                       last_active_at = NOW()
+                 WHERE session_id = $2
+                """,
+                fallback_phone,
+                session_id,
+            )
+            return fallback_phone
+
+        cart_row = await conn.fetchrow(
+            """
+            SELECT phone
+              FROM public.carts
+             WHERE session_id = $1
+             ORDER BY updated_at DESC, created_at DESC
+             LIMIT 1
+            """,
+            session_id,
+        )
+        if cart_row and cart_row["phone"]:
+            fallback_phone = str(cart_row["phone"])
+            await conn.execute(
+                """
+                UPDATE public.sessions
+                   SET phone_number = $1,
+                       last_active_at = NOW()
+                 WHERE session_id = $2
+                """,
+                fallback_phone,
+                session_id,
+            )
+            return fallback_phone
+
+    return None
 
 
 def _format_address_row(row: Any) -> dict[str, Any]:
