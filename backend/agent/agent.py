@@ -22,7 +22,7 @@ import inspect
 import logging
 import time
 from functools import wraps
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from google.adk.agents import LlmAgent
 from google.adk.plugins import ReflectAndRetryToolPlugin
