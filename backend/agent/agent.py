@@ -18,7 +18,11 @@ Model:
 
 from __future__ import annotations
 
+import inspect
 import logging
+import time
+from functools import wraps
+from typing import Any, Callable
 
 from google.adk.agents import LlmAgent
 from google.adk.plugins import ReflectAndRetryToolPlugin
@@ -37,6 +41,167 @@ from backend.agent.tools.update_cart import update_cart
 from backend.agent.tools.vet_clinics import find_nearest_vet_clinic
 
 logger = logging.getLogger("wafrivet.agent")
+
+_REDACT_KEYS = {
+  "pin",
+  "new_pin",
+  "otp",
+  "secret",
+  "token",
+  "authorization",
+  "api_key",
+  "paystack_secret_key",
+  "termii_api_key",
+}
+
+
+def _sanitize_tool_args(args: dict[str, Any]) -> dict[str, Any]:
+  """Redact sensitive values before writing tool args to logs."""
+  safe: dict[str, Any] = {}
+  for key, value in (args or {}).items():
+    if key.lower() in _REDACT_KEYS:
+      safe[key] = "[REDACTED]"
+      continue
+    if isinstance(value, str) and len(value) > 220:
+      safe[key] = f"{value[:220]}...<truncated:{len(value)} chars>"
+      continue
+    safe[key] = value
+  return safe
+
+
+def _tool_with_logging(tool_fn: Callable[..., Any]) -> Callable[..., Any]:
+  """Wrap an ADK tool with detailed start/success/failure logging."""
+  if inspect.iscoroutinefunction(tool_fn):
+
+    @wraps(tool_fn)
+    async def _async_wrapper(*args: Any, **kwargs: Any) -> Any:
+      start = time.perf_counter()
+      ctx = kwargs.get("tool_context")
+      state = getattr(ctx, "state", {}) if ctx else {}
+      session_id = str(state.get("auth_session_id") or "")
+      safe_kwargs = _sanitize_tool_args(dict(kwargs))
+      safe_kwargs.pop("tool_context", None)
+
+      logger.info(
+        "tool_call_start",
+        extra={
+          "tool": tool_fn.__name__,
+          "session_id": session_id,
+          "args": safe_kwargs,
+        },
+      )
+
+      try:
+        result = await tool_fn(*args, **kwargs)
+        elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+        logger.info(
+          "tool_call_success",
+          extra={
+            "tool": tool_fn.__name__,
+            "session_id": session_id,
+            "duration_ms": elapsed_ms,
+            "status": (
+              result.get("status") if isinstance(result, dict) else "unknown"
+            ),
+          },
+        )
+        if isinstance(result, dict) and result.get("status") == "error":
+          logger.warning(
+            "tool_call_returned_error",
+            extra={
+              "tool": tool_fn.__name__,
+              "session_id": session_id,
+              "duration_ms": elapsed_ms,
+              "message": result.get("message") or result.get("user_message"),
+            },
+          )
+        return result
+      except Exception:
+        elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+        logger.exception(
+          "tool_call_exception",
+          extra={
+            "tool": tool_fn.__name__,
+            "session_id": session_id,
+            "duration_ms": elapsed_ms,
+            "args": safe_kwargs,
+          },
+        )
+        raise
+
+    return _async_wrapper
+
+  @wraps(tool_fn)
+  def _sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+    start = time.perf_counter()
+    ctx = kwargs.get("tool_context")
+    state = getattr(ctx, "state", {}) if ctx else {}
+    session_id = str(state.get("auth_session_id") or "")
+    safe_kwargs = _sanitize_tool_args(dict(kwargs))
+    safe_kwargs.pop("tool_context", None)
+
+    logger.info(
+      "tool_call_start",
+      extra={
+        "tool": tool_fn.__name__,
+        "session_id": session_id,
+        "args": safe_kwargs,
+      },
+    )
+
+    try:
+      result = tool_fn(*args, **kwargs)
+      elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+      logger.info(
+        "tool_call_success",
+        extra={
+          "tool": tool_fn.__name__,
+          "session_id": session_id,
+          "duration_ms": elapsed_ms,
+          "status": (
+            result.get("status") if isinstance(result, dict) else "unknown"
+          ),
+        },
+      )
+      if isinstance(result, dict) and result.get("status") == "error":
+        logger.warning(
+          "tool_call_returned_error",
+          extra={
+            "tool": tool_fn.__name__,
+            "session_id": session_id,
+            "duration_ms": elapsed_ms,
+            "message": result.get("message") or result.get("user_message"),
+          },
+        )
+      return result
+    except Exception:
+      elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+      logger.exception(
+        "tool_call_exception",
+        extra={
+          "tool": tool_fn.__name__,
+          "session_id": session_id,
+          "duration_ms": elapsed_ms,
+          "args": safe_kwargs,
+        },
+      )
+      raise
+
+  return _sync_wrapper
+
+
+manage_cart = _tool_with_logging(manage_cart)
+generate_checkout_link = _tool_with_logging(generate_checkout_link)
+search_disease_matches = _tool_with_logging(search_disease_matches)
+identify_product_from_frame = _tool_with_logging(identify_product_from_frame)
+update_location = _tool_with_logging(update_location)
+get_order_history = _tool_with_logging(get_order_history)
+place_order = _tool_with_logging(place_order)
+recommend_products = _tool_with_logging(recommend_products)
+search_products = _tool_with_logging(search_products)
+find_cheaper_option = _tool_with_logging(find_cheaper_option)
+update_cart = _tool_with_logging(update_cart)
+find_nearest_vet_clinic = _tool_with_logging(find_nearest_vet_clinic)
 
 # ---------------------------------------------------------------------------
 # System instruction — Fatima persona

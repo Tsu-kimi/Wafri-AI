@@ -96,7 +96,10 @@ class OtpVerifyResponse(BaseModel):
 
 
 class DeliveryAddressRequest(BaseModel):
-    address: str = Field(..., min_length=8, max_length=240)
+    # Accept both address and legacy deliveryAddress payload keys.
+    # This avoids FastAPI 422s when older frontend builds send camelCase.
+    address: Optional[str] = Field(None, min_length=8, max_length=500)
+    deliveryAddress: Optional[str] = Field(None, min_length=8, max_length=500)
 
 
 class DeliveryAddressResponse(BaseModel):
@@ -377,12 +380,46 @@ async def set_delivery_address(
     body: DeliveryAddressRequest,
     session_id: str = Depends(get_session),
 ) -> dict:
+    candidate_address = (body.address or body.deliveryAddress or "").strip()
+    if len(candidate_address) < 8:
+        log.warning(
+            "set_delivery_address_invalid_payload",
+            extra={
+                "session_id": session_id,
+                "has_address": bool(body.address),
+                "has_deliveryAddress": bool(body.deliveryAddress),
+                "address_length": len(candidate_address),
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Delivery address is required and must be at least 8 characters. "
+                "Send JSON as {\"address\": \"...\"}."
+            ),
+        )
+
     try:
         address = await farmer_service.set_delivery_address(
             session_id=session_id,
-            address=body.address,
+            address=candidate_address,
+        )
+        log.info(
+            "set_delivery_address_success",
+            extra={
+                "session_id": session_id,
+                "address_length": len(address),
+            },
         )
     except ValueError as exc:
+        log.warning(
+            "set_delivery_address_validation_failed",
+            extra={
+                "session_id": session_id,
+                "address_length": len(candidate_address),
+                "detail": str(exc),
+            },
+        )
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except Exception:
         log.exception("set_delivery_address_failed", extra={"session_id": session_id})

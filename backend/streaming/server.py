@@ -39,7 +39,8 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 import structlog
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, status
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from google.adk.agents import LlmAgent
@@ -231,6 +232,43 @@ app.include_router(sessions_router)
 # ── Phase 5: Farmers + Payments routers ───────────────────────────────────────
 app.include_router(farmers_router)
 app.include_router(payments_router)
+
+
+@app.exception_handler(RequestValidationError)
+async def _request_validation_exception_handler(
+    request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
+    """Log full 422 validation details with request context for debugging."""
+    errors = exc.errors()
+    body_preview = ""
+    try:
+        raw = await request.body()
+        body_preview = raw.decode("utf-8", errors="replace")[:1000]
+    except Exception:
+        body_preview = "<unavailable>"
+
+    log.warning(
+        "request_validation_failed",
+        method=request.method,
+        path=request.url.path,
+        query=str(request.url.query),
+        client_ip=(request.client.host if request.client else None),
+        error_count=len(errors),
+        errors=errors,
+        body_preview=body_preview,
+    )
+
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "detail": errors,
+            "message": (
+                "Request validation failed. Check required fields, value lengths, "
+                "and payload shape."
+            ),
+        },
+    )
 
 
 @app.get("/health")

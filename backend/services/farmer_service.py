@@ -324,8 +324,8 @@ async def set_delivery_address(session_id: str, address: str) -> str:
     normalized = (address or "").strip()
     if len(normalized) < 8:
         raise ValueError("Delivery address must be at least 8 characters.")
-    if len(normalized) > 240:
-        raise ValueError("Delivery address is too long. Keep it under 240 characters.")
+    if len(normalized) > 500:
+        raise ValueError("Delivery address is too long. Keep it under 500 characters.")
 
     phone = await _resolve_phone_from_session(session_id)
     if not phone:

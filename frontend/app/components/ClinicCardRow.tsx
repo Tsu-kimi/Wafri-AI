@@ -45,8 +45,9 @@ function ClinicCard({ clinic }: ClinicCardProps) {
   return (
     <div
       style={{
-        minWidth: '220px',
-        maxWidth: '260px',
+        minWidth: '260px',
+        width: '260px',
+        maxWidth: '300px',
         background: 'rgba(22, 30, 46, 0.92)',
         border: '1.5px solid rgba(48,54,61,0.9)',
         borderRadius: '14px',
