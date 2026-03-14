@@ -63,6 +63,7 @@ from backend.routers.payments import router as payments_router  # noqa: E402
 from backend.routers.sessions import router as sessions_router  # noqa: E402
 from backend.services.redis_client import init_redis, close_redis  # noqa: E402
 from backend.streaming.bridge import run_bridge  # noqa: E402
+from backend.streaming.events import cart_updated_event  # noqa: E402
 from backend.streaming.session_store import (  # noqa: E402
     get_session_handle,
     upsert_session_handle,
@@ -415,27 +416,24 @@ async def websocket_endpoint(
         initial_state = dict(INITIAL_STATE)
         initial_state["auth_session_id"] = auth_session_id
 
-        # If the farmer has already logged in, the sessions row will have
-        # phone_number set by POST /farmers/login. Populate farmer identity
-        # fields in ADK state so tools like get_order_history can run without
-        # re-auth prompts.
+        # If the farmer has already logged in, populate farmer identity so tools
+        # work immediately without requiring a manage_delivery_address call.
+        # Uses the same multi-fallback resolution as farmer_service tools
+        # (sessions → farmers.session_id → carts.session_id).
         try:
+            from backend.services.farmer_service import _resolve_phone_from_session as _rfps
             from backend.db.rls import rls_context as _rls
-            async with _rls(auth_session_id) as _conn:
-                _row = await _conn.fetchrow(
-                    """
-                    SELECT s.phone_number, f.name
-                      FROM public.sessions s
-                      LEFT JOIN public.farmers f ON f.phone_number = s.phone_number
-                     WHERE s.session_id = $1
-                    """,
-                    auth_session_id,
-                )
-            if _row and _row["phone_number"]:
-                initial_state["farmer_phone"] = _row["phone_number"]
+            _resolved_phone = await _rfps(auth_session_id)
+            if _resolved_phone:
+                initial_state["farmer_phone"] = _resolved_phone
                 initial_state["farmer_phone_verified"] = True
-                if _row["name"]:
-                    initial_state["farmer_name"] = _row["name"]
+                async with _rls(auth_session_id) as _conn:
+                    _fname = await _conn.fetchval(
+                        "SELECT name FROM public.farmers WHERE phone_number = $1 LIMIT 1",
+                        _resolved_phone,
+                    )
+                if _fname:
+                    initial_state["farmer_name"] = str(_fname)
         except Exception as _exc:
             log.warning("session_phone_lookup_failed", auth_session_id=auth_session_id, error=str(_exc))
 
@@ -451,25 +449,22 @@ async def websocket_endpoint(
         if existing.state.get("auth_session_id") != auth_session_id:
             existing.state["auth_session_id"] = auth_session_id
 
-        # Refresh farmer identity on every websocket resume. This covers the
-        # common path where login happened after the ADK session was created.
+        # Refresh farmer identity on every websocket resume using the same
+        # multi-fallback resolution (sessions → farmers → carts).
         try:
+            from backend.services.farmer_service import _resolve_phone_from_session as _rfps
             from backend.db.rls import rls_context as _rls
-            async with _rls(auth_session_id) as _conn:
-                _row = await _conn.fetchrow(
-                    """
-                    SELECT s.phone_number, f.name
-                      FROM public.sessions s
-                      LEFT JOIN public.farmers f ON f.phone_number = s.phone_number
-                     WHERE s.session_id = $1
-                    """,
-                    auth_session_id,
-                )
-            if _row and _row["phone_number"]:
-                existing.state["farmer_phone"] = _row["phone_number"]
+            _resolved_phone = await _rfps(auth_session_id)
+            if _resolved_phone:
+                existing.state["farmer_phone"] = _resolved_phone
                 existing.state["farmer_phone_verified"] = True
-                if _row["name"]:
-                    existing.state["farmer_name"] = _row["name"]
+                async with _rls(auth_session_id) as _conn:
+                    _fname = await _conn.fetchval(
+                        "SELECT name FROM public.farmers WHERE phone_number = $1 LIMIT 1",
+                        _resolved_phone,
+                    )
+                if _fname:
+                    existing.state["farmer_name"] = str(_fname)
         except Exception as _exc:
             log.warning("session_phone_refresh_failed", auth_session_id=auth_session_id, error=str(_exc))
 
@@ -489,6 +484,63 @@ async def websocket_endpoint(
 
     # Persist the mapping so the client can reconnect
     upsert_session_handle(user_id=user_id, session_id=session_id)
+
+    # ── 4b. Push persisted cart to the frontend immediately on connect ────
+    # Cart data is tied to the farmer's phone number in the DB, so it
+    # survives session restarts and page refreshes.  We load it once here
+    # and broadcast CART_UPDATED so the UI reflects the true cart without
+    # requiring the agent to call manage_cart first.
+    try:
+        # The active session was just created or found above; fetch it fresh.
+        _active_session = await _session_service.get_session(
+            app_name=_APP_NAME, user_id=user_id, session_id=session_id
+        )
+        _phone_for_cart: str = str(
+            (_active_session.state.get("farmer_phone") if _active_session else None) or ""
+        )
+        if _phone_for_cart:
+            from backend.db.rls import rls_context as _rls2
+            import json as _json2
+            async with _rls2(auth_session_id, phone=_phone_for_cart) as _conn2:
+                _cart_row = await _conn2.fetchrow(
+                    """
+                    SELECT items_json, total_amount
+                      FROM public.carts
+                     WHERE phone = $1
+                       AND status NOT IN ('completed', 'cancelled')
+                    """,
+                    _phone_for_cart,
+                )
+            if _cart_row:
+                _raw = _cart_row["items_json"]
+                _items: list = _json2.loads(_raw) if isinstance(_raw, str) else (_raw or [])
+                _total: float = float(_cart_row["total_amount"] or 0)
+                if _items:
+                    await websocket.send_json(
+                        cart_updated_event(
+                            items=_items,
+                            cart_total=_total,
+                            message="",
+                        )
+                    )
+                    # Sync agent state so it knows the cart without needing a tool call.
+                    if _active_session:
+                        _active_session.state["cart_items"] = _items
+                        _active_session.state["cart_total"] = _total
+                    log.info(
+                        "cart_restored",
+                        user_id=user_id,
+                        session_id=session_id,
+                        item_count=len(_items),
+                        total=_total,
+                    )
+    except Exception as _cart_exc:
+        log.warning(
+            "cart_restore_failed",
+            user_id=user_id,
+            session_id=session_id,
+            error=str(_cart_exc),
+        )
 
     # ── 5. Hand off to bridge ─────────────────────────────────────────────
     try:

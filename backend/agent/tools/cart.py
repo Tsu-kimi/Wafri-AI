@@ -154,12 +154,6 @@ async def manage_cart(
             ),
         }
 
-    # Validate phone
-    try:
-        phone = _validate_phone(phone)
-    except ValueError as exc:
-        return {"status": "error", "data": {}, "message": str(exc)}
-
     # Retrieve auth_session_id from ADK session state (set by websocket_endpoint)
     auth_session_id: str = str(tool_context.state.get("auth_session_id") or "")
     if not auth_session_id:
@@ -168,6 +162,27 @@ async def manage_cart(
             "data": {},
             "message": "Session not established. Please reconnect.",
         }
+
+    # Resolve the canonical phone from session state first; the agent may pass
+    # the wrong phone (e.g. a delivery_phone instead of the account phone).
+    session_phone: str = str(tool_context.state.get("farmer_phone") or "")
+    if not session_phone:
+        try:
+            from backend.services.farmer_service import _resolve_phone_from_session
+            session_phone = (await _resolve_phone_from_session(auth_session_id)) or ""
+            if session_phone:
+                tool_context.state["farmer_phone"] = session_phone
+        except Exception:
+            pass
+
+    # Fall back to agent-supplied phone only when session has no record.
+    if session_phone:
+        phone = session_phone
+    else:
+        try:
+            phone = _validate_phone(phone)
+        except ValueError as exc:
+            return {"status": "error", "data": {}, "message": str(exc)}
 
     if action == "add":
         qty = max(1, int(qty or 1))

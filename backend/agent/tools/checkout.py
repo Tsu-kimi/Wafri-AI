@@ -160,24 +160,39 @@ async def generate_checkout_link(
     # Extract RLS session identity (set by SessionMiddleware via websocket.state)
     auth_session_id: str = str(tool_context.state.get("auth_session_id") or "")
 
-    # Validate phone
-    phone = (phone or "").strip()
-    if not _PHONE_REGEX.match(phone):
-        return {
-            "status": "error",
-            "data": {},
-            "message": (
-                "A valid E.164 phone number is required to generate a payment link "
-                "(e.g. +2348012345678)."
-            ),
-        }
-
     if not auth_session_id:
         return {
             "status": "error",
             "data": {},
             "message": "Session not established. Please reconnect.",
         }
+
+    # Resolve canonical account phone from session state; the agent may pass the
+    # wrong phone (e.g. a delivery contact number instead of the account phone).
+    # We never trust the agent-supplied phone for DB lookups.
+    session_phone: str = str(tool_context.state.get("farmer_phone") or "")
+    if not session_phone:
+        try:
+            from backend.services.farmer_service import _resolve_phone_from_session
+            session_phone = (await _resolve_phone_from_session(auth_session_id)) or ""
+            if session_phone:
+                tool_context.state["farmer_phone"] = session_phone
+        except Exception as _rpe:
+            logger.warning("generate_checkout_link: phone resolution failed: %s", _rpe)
+
+    if session_phone:
+        phone = session_phone
+    else:
+        # Last resort: validate whatever the agent passed.
+        phone = (phone or "").strip()
+        if not _PHONE_REGEX.match(phone):
+            return {
+                "status": "error",
+                "data": {},
+                "message": (
+                    "Could not identify your account phone. Please reconnect and try again."
+                ),
+            }
 
     # Enforce delivery address AND verify cart contents before checkout.
     from backend.db.rls import rls_context
