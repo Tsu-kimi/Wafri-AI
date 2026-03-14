@@ -196,11 +196,12 @@ async def lookup_with_history(
         farmer = dict(farmer_row)
 
         # Build dynamic WHERE clause for order filters.
-        where_clauses: list[str] = ["phone = $1", "status = ANY($2::text[])"]
+        # carts.status is type cart_status (enum); cast to text so it compares to $2 (text).
+        where_clauses: list[str] = ["phone = $1", "status::text = ANY($2::text[])"]
         params: list[Any] = [phone, list(_ORDER_STATUSES)]
 
         if status_filter and status_filter in _ORDER_STATUSES:
-            where_clauses = ["phone = $1", "status = $2"]
+            where_clauses = ["phone = $1", "status::text = $2"]
             params = [phone, status_filter]
 
         param_idx = len(params) + 1
