@@ -44,6 +44,8 @@ export const WT = {
   CLINICS_FOUND:         'CLINICS_FOUND',
   /** An ADK tool returned a non-success status. */
   TOOL_ERROR:            'TOOL_ERROR',
+  /** Browser-visible diagnostics for tool pass/fail from the backend bridge. */
+  TOOL_CALL_DEBUG:       'TOOL_CALL_DEBUG',
   /** Terminal Gemini model error (safety, block, token limit, cancel). */
   ERROR:                 'ERROR',
   /** Phase 3: place_order confirmed; show reference number + SMS notice. */
@@ -87,6 +89,8 @@ export type WTKey = keyof typeof WT;
 export interface Product {
   id: string;
   name: string;
+  /** Backward-compat alias from hybrid_search_products RPC output. */
+  product_name?: string;
   /** Fallback price in NGN from the products table `base_price` column. */
   base_price: number;
   /**
@@ -222,6 +226,18 @@ export interface ToolErrorEvent {
 }
 
 /**
+ * Browser-console diagnostics for ADK tool outcomes emitted by the bridge.
+ * This mirrors server-side logging with lightweight, sanitized metadata.
+ */
+export interface ToolCallDebugEvent {
+  type: 'TOOL_CALL_DEBUG';
+  tool_name: string;
+  status: 'success' | 'error' | 'exception' | string;
+  message: string;
+  details: Record<string, unknown>;
+}
+
+/**
  * Phase 3: place_order confirmed.
  * Display the order reference number and an SMS confirmation notice.
  */
@@ -290,6 +306,7 @@ export type ServerEvent =
   | LocationConfirmedEvent
   | ClinicsFoundEvent
   | ToolErrorEvent
+  | ToolCallDebugEvent
   | ModelErrorEvent
   | InterruptedEvent
   | OrderConfirmedEvent

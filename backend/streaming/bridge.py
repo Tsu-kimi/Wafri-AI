@@ -66,6 +66,7 @@ from backend.streaming.events import (
     payment_confirmed_event,
     products_recommended_event,
     scanning_product_event,
+    tool_call_debug_event,
     tool_error_event,
     turn_complete_event,
 )
@@ -74,6 +75,64 @@ logger = logging.getLogger("wafrivet.streaming.bridge")
 
 # MIME type expected by Gemini Live for raw PCM audio from the browser
 _AUDIO_MIME = "audio/pcm;rate=16000"
+
+
+def _normalise_products_payload(products: Any) -> list[dict[str, Any]]:
+    """Coerce tool product rows to the stable frontend card shape."""
+    if not isinstance(products, list):
+        return []
+
+    normalised: list[dict[str, Any]] = []
+    for row in products:
+        if not isinstance(row, dict):
+            continue
+
+        # search_products returns product_name; recommend_products returns name.
+        name = (row.get("name") or row.get("product_name") or "").strip()
+        base_price = row.get("base_price")
+        if base_price is None:
+            base_price = row.get("price_ngn", row.get("price", 0))
+
+        price = row.get("price")
+        if price is None:
+            price = row.get("price_ngn")
+
+        normalised.append(
+            {
+                "id": row.get("id") or row.get("product_id") or "",
+                "name": name,
+                "base_price": base_price,
+                "price": price,
+                "image_url": row.get("image_url") or "",
+                "description": row.get("description") or "",
+                "dosage_notes": row.get("dosage_notes") or "",
+                "rrf_rank": row.get("rrf_rank"),
+                "distributor_id": row.get("distributor_id"),
+            }
+        )
+
+    return normalised
+
+
+def _summarize_tool_data(data: dict[str, Any]) -> dict[str, Any]:
+    """Return a small, non-sensitive summary of tool response data."""
+    if not isinstance(data, dict):
+        return {"data_type": type(data).__name__}
+
+    summary: dict[str, Any] = {"keys": sorted(list(data.keys()))[:20]}
+    if "products" in data and isinstance(data.get("products"), list):
+        summary["products_count"] = len(data["products"])
+    if "items" in data and isinstance(data.get("items"), list):
+        summary["items_count"] = len(data["items"])
+    if "cart_total" in data:
+        summary["cart_total"] = data.get("cart_total")
+    if "state" in data:
+        summary["state"] = data.get("state")
+    if "payment_reference" in data:
+        summary["payment_reference"] = data.get("payment_reference")
+    if "checkout_url" in data:
+        summary["has_checkout_url"] = bool(data.get("checkout_url"))
+    return summary
 
 
 # ---------------------------------------------------------------------------
@@ -505,6 +564,14 @@ async def _route_tool_response(
 
     if status != "success":
         await websocket.send_json(tool_error_event(tool_name=tool_name, error=message))
+        await websocket.send_json(
+            tool_call_debug_event(
+                tool_name=tool_name,
+                status="error",
+                message=message or f"{tool_name} returned non-success status",
+                details={"status": status, "data": _summarize_tool_data(data)},
+            )
+        )
         logger.info(
             {
                 "event": "tool_error",
@@ -517,8 +584,17 @@ async def _route_tool_response(
         return
 
     try:
+        await websocket.send_json(
+            tool_call_debug_event(
+                tool_name=tool_name,
+                status="success",
+                message=message or f"{tool_name} succeeded",
+                details={"status": status, "data": _summarize_tool_data(data)},
+            )
+        )
+
         if tool_name == "recommend_products":
-            products = data.get("products", [])
+            products = _normalise_products_payload(data.get("products", []))
             # Retrieve the disease/location context from the data dict if available
             disease_category = data.get("disease_category", "")
             location = data.get("location", "")
@@ -595,7 +671,7 @@ async def _route_tool_response(
         # ── Phase 3 tool routes ──────────────────────────────────────
 
         elif tool_name in ("search_products", "find_cheaper_option"):
-            products = data.get("products", [])
+            products = _normalise_products_payload(data.get("products", []))
             await websocket.send_json(products_recommended_event(products=products, message=message))
             logger.info(
                 {
@@ -665,6 +741,14 @@ async def _route_tool_response(
 
     except Exception as exc:
         await websocket.send_json(tool_error_event(tool_name=tool_name, error=str(exc)))
+        await websocket.send_json(
+            tool_call_debug_event(
+                tool_name=tool_name,
+                status="exception",
+                message=str(exc),
+                details={"status": status, "data": _summarize_tool_data(data)},
+            )
+        )
         logger.info(
             {
                 "event": "tool_error",

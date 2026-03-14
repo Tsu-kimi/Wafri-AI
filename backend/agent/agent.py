@@ -41,6 +41,18 @@ from backend.agent.tools.update_cart import update_cart
 from backend.agent.tools.vet_clinics import find_nearest_vet_clinic
 
 logger = logging.getLogger("wafrivet.agent")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+  _console_handler = logging.StreamHandler()
+  _console_handler.setLevel(logging.INFO)
+  _console_handler.setFormatter(
+    logging.Formatter(
+      "%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+      datefmt="%Y-%m-%dT%H:%M:%S",
+    )
+  )
+  logger.addHandler(_console_handler)
+logger.propagate = True
 
 _REDACT_KEYS = {
   "pin",
@@ -83,49 +95,39 @@ def _tool_with_logging(tool_fn: Callable[..., Any]) -> Callable[..., Any]:
       safe_kwargs.pop("tool_context", None)
 
       logger.info(
-        "tool_call_start",
-        extra={
-          "tool": tool_fn.__name__,
-          "session_id": session_id,
-          "args": safe_kwargs,
-        },
+        "tool_call_start tool=%s session_id=%s args=%s",
+        tool_fn.__name__,
+        session_id or "unknown",
+        safe_kwargs,
       )
 
       try:
         result = await tool_fn(*args, **kwargs)
         elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
         logger.info(
-          "tool_call_success",
-          extra={
-            "tool": tool_fn.__name__,
-            "session_id": session_id,
-            "duration_ms": elapsed_ms,
-            "status": (
-              result.get("status") if isinstance(result, dict) else "unknown"
-            ),
-          },
+          "tool_call_success tool=%s session_id=%s duration_ms=%s status=%s",
+          tool_fn.__name__,
+          session_id or "unknown",
+          elapsed_ms,
+          (result.get("status") if isinstance(result, dict) else "unknown"),
         )
         if isinstance(result, dict) and result.get("status") == "error":
           logger.warning(
-            "tool_call_returned_error",
-            extra={
-              "tool": tool_fn.__name__,
-              "session_id": session_id,
-              "duration_ms": elapsed_ms,
-              "message": result.get("message") or result.get("user_message"),
-            },
+            "tool_call_returned_error tool=%s session_id=%s duration_ms=%s message=%s",
+            tool_fn.__name__,
+            session_id or "unknown",
+            elapsed_ms,
+            result.get("message") or result.get("user_message"),
           )
         return result
       except Exception:
         elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
         logger.exception(
-          "tool_call_exception",
-          extra={
-            "tool": tool_fn.__name__,
-            "session_id": session_id,
-            "duration_ms": elapsed_ms,
-            "args": safe_kwargs,
-          },
+          "tool_call_exception tool=%s session_id=%s duration_ms=%s args=%s",
+          tool_fn.__name__,
+          session_id or "unknown",
+          elapsed_ms,
+          safe_kwargs,
         )
         raise
 
@@ -141,49 +143,39 @@ def _tool_with_logging(tool_fn: Callable[..., Any]) -> Callable[..., Any]:
     safe_kwargs.pop("tool_context", None)
 
     logger.info(
-      "tool_call_start",
-      extra={
-        "tool": tool_fn.__name__,
-        "session_id": session_id,
-        "args": safe_kwargs,
-      },
+      "tool_call_start tool=%s session_id=%s args=%s",
+      tool_fn.__name__,
+      session_id or "unknown",
+      safe_kwargs,
     )
 
     try:
       result = tool_fn(*args, **kwargs)
       elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
       logger.info(
-        "tool_call_success",
-        extra={
-          "tool": tool_fn.__name__,
-          "session_id": session_id,
-          "duration_ms": elapsed_ms,
-          "status": (
-            result.get("status") if isinstance(result, dict) else "unknown"
-          ),
-        },
+        "tool_call_success tool=%s session_id=%s duration_ms=%s status=%s",
+        tool_fn.__name__,
+        session_id or "unknown",
+        elapsed_ms,
+        (result.get("status") if isinstance(result, dict) else "unknown"),
       )
       if isinstance(result, dict) and result.get("status") == "error":
         logger.warning(
-          "tool_call_returned_error",
-          extra={
-            "tool": tool_fn.__name__,
-            "session_id": session_id,
-            "duration_ms": elapsed_ms,
-            "message": result.get("message") or result.get("user_message"),
-          },
+          "tool_call_returned_error tool=%s session_id=%s duration_ms=%s message=%s",
+          tool_fn.__name__,
+          session_id or "unknown",
+          elapsed_ms,
+          result.get("message") or result.get("user_message"),
         )
       return result
     except Exception:
       elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
       logger.exception(
-        "tool_call_exception",
-        extra={
-          "tool": tool_fn.__name__,
-          "session_id": session_id,
-          "duration_ms": elapsed_ms,
-          "args": safe_kwargs,
-        },
+        "tool_call_exception tool=%s session_id=%s duration_ms=%s args=%s",
+        tool_fn.__name__,
+        session_id or "unknown",
+        elapsed_ms,
+        safe_kwargs,
       )
       raise
 

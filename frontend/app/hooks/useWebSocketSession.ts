@@ -391,6 +391,18 @@ export function useWebSocketSession({
           });
           break;
 
+        case 'TOOL_CALL_DEBUG': {
+          const prefix = `[tool:${raw.tool_name}] ${raw.status.toUpperCase()}`;
+          if (raw.status === 'success') {
+            console.info(prefix, raw.message, raw.details ?? {});
+          } else if (raw.status === 'error') {
+            console.warn(prefix, raw.message, raw.details ?? {});
+          } else {
+            console.error(prefix, raw.message, raw.details ?? {});
+          }
+          break;
+        }
+
         case 'ERROR':
           dispatch({ type: 'MODEL_ERROR', code: raw.code, message: raw.message });
           break;

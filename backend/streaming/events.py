@@ -36,6 +36,7 @@ T_CHECKOUT_LINK        = "CHECKOUT_LINK"
 T_LOCATION_CONFIRMED   = "LOCATION_CONFIRMED"
 T_CLINICS_FOUND        = "CLINICS_FOUND"
 T_TOOL_ERROR           = "TOOL_ERROR"
+T_TOOL_CALL_DEBUG      = "TOOL_CALL_DEBUG"
 # Phase 3
 T_ORDER_CONFIRMED      = "ORDER_CONFIRMED"
 T_SCANNING_PRODUCT     = "SCANNING_PRODUCT"
@@ -138,6 +139,31 @@ def tool_error_event(tool_name: str, error: str) -> dict:
         "type":      T_TOOL_ERROR,
         "tool_name": tool_name,
         "error":     error,
+    }
+
+
+def tool_call_debug_event(
+    tool_name: str,
+    status: str,
+    message: str = "",
+    details: Optional[dict[str, Any]] = None,
+) -> dict:
+    """
+    Emits lightweight tool execution diagnostics to the browser console.
+    Intended for QA/debug builds and does not replace server-side logs.
+
+    Args:
+        tool_name: Name of the invoked ADK tool.
+        status: "success" | "error" | "exception".
+        message: Human-readable summary.
+        details: Optional structured metadata (sanitized, non-sensitive).
+    """
+    return {
+        "type": T_TOOL_CALL_DEBUG,
+        "tool_name": tool_name,
+        "status": status,
+        "message": message,
+        "details": details or {},
     }
 
 

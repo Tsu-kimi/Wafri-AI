@@ -35,6 +35,8 @@ interface ProductCardProps {
 function ProductCard({ product, isActive, onTap, onAdd }: ProductCardProps) {
   const hasImage =
     product.image_url && product.image_url.trim().length > 0;
+  const displayName =
+    product.name?.trim() || product.product_name?.trim() || 'Unnamed product';
 
   const cardWidth = '280px';
 
@@ -50,7 +52,7 @@ function ProductCard({ product, isActive, onTap, onAdd }: ProductCardProps) {
         }
       }}
       aria-pressed={isActive}
-      aria-label={`${product.name}, ₦${(product.price ?? product.base_price).toLocaleString('en-NG')}${isActive ? ', selected' : ''}`}
+      aria-label={`${displayName}, ₦${(product.price ?? product.base_price).toLocaleString('en-NG')}${isActive ? ', selected' : ''}`}
       style={{
         flex: `0 0 ${cardWidth}`,
         width: cardWidth,
@@ -84,7 +86,7 @@ function ProductCard({ product, isActive, onTap, onAdd }: ProductCardProps) {
         {hasImage ? (
           <Image
             src={product.image_url}
-            alt={product.name}
+            alt={displayName}
             fill
             sizes="280px"
             style={{ objectFit: 'cover' }}
@@ -129,7 +131,7 @@ function ProductCard({ product, isActive, onTap, onAdd }: ProductCardProps) {
             margin: 0,
           }}
         >
-          {product.name}
+          {displayName}
         </p>
 
         <p
@@ -164,7 +166,7 @@ function ProductCard({ product, isActive, onTap, onAdd }: ProductCardProps) {
             transition: 'background 0.2s ease, color 0.2s ease',
             touchAction: 'manipulation',
           }}
-          aria-label={`Add ${product.name} to cart`}
+          aria-label={`Add ${displayName} to cart`}
         >
           + Add to cart
         </button>

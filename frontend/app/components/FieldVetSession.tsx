@@ -354,7 +354,8 @@ export function FieldVetSession() {
   // ── Add-to-cart voice command ───────────────────────────────────────────────
   const handleAddToCart = useCallback(
     (product: Product) => {
-      sendText(`Add ${product.name} to my cart`);
+      const name = product.name?.trim() || product.product_name?.trim() || 'this product';
+      sendText(`Add ${name} to my cart`);
     },
     [sendText],
   );
