@@ -1,5 +1,6 @@
 # backend.agent.tools package
 from .cart import manage_cart
+from .address_book import manage_delivery_address
 from .checkout import generate_checkout_link
 from .disease import search_disease_matches
 from .identify_product import identify_product_from_frame
@@ -24,4 +25,5 @@ __all__ = [
     "identify_product_from_frame",
     "update_cart",
     "place_order",
+    "manage_delivery_address",
 ]

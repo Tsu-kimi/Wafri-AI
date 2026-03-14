@@ -96,14 +96,76 @@ class OtpVerifyResponse(BaseModel):
 
 
 class DeliveryAddressRequest(BaseModel):
-    # Accept both address and legacy deliveryAddress payload keys.
-    # This avoids FastAPI 422s when older frontend builds send camelCase.
-    address: Optional[str] = Field(None, min_length=8, max_length=500)
-    deliveryAddress: Optional[str] = Field(None, min_length=8, max_length=500)
+    # Backward-compatible plain text fields.
+    address: Optional[str] = None
+    deliveryAddress: Optional[str] = None
+
+    # Structured address fields for new clients.
+    unit: Optional[str] = None
+    street: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    country: Optional[str] = None
+    postal_code: Optional[str] = None
+    delivery_phone: Optional[str] = None
 
 
 class DeliveryAddressResponse(BaseModel):
     address: Optional[str]
+    message: str
+
+
+class AddressFields(BaseModel):
+    unit: str = Field(..., min_length=1, max_length=120)
+    street: str = Field(..., min_length=2, max_length=200)
+    city: str = Field(..., min_length=2, max_length=120)
+    state: str = Field(..., min_length=2, max_length=120)
+    country: str = Field(..., min_length=2, max_length=120)
+    postal_code: str = Field(..., min_length=2, max_length=32)
+    delivery_phone: str = Field(..., min_length=7, max_length=32)
+
+
+class AddressCreateRequest(AddressFields):
+    set_default: bool = True
+
+
+class AddressUpdateRequest(AddressFields):
+    set_default: bool = False
+
+
+class AddressSelectRequest(BaseModel):
+    address_id: str = Field(..., min_length=8, max_length=64)
+
+
+class StructuredAddress(BaseModel):
+    id: str
+    unit: str
+    street: str
+    city: str
+    state: str
+    country: str
+    postal_code: str
+    delivery_phone: str
+    is_default: bool
+    formatted: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class AddressBookResponse(BaseModel):
+    selected_id: Optional[str]
+    addresses: list[StructuredAddress]
+    message: str
+
+
+class AddressMutationResponse(BaseModel):
+    address: StructuredAddress
+    message: str
+
+
+class AddressDeleteResponse(BaseModel):
+    deleted_id: str
+    selected_id: Optional[str]
     message: str
 
 
@@ -370,6 +432,170 @@ async def get_delivery_address(
     }
 
 
+@router.get(
+    "/addresses",
+    status_code=status.HTTP_200_OK,
+    response_model=AddressBookResponse,
+    summary="List saved structured delivery addresses",
+)
+async def list_addresses(session_id: str = Depends(get_session)) -> dict:
+    try:
+        payload = await farmer_service.list_delivery_addresses(session_id=session_id)
+    except Exception:
+        log.exception("list_addresses_failed", extra={"session_id": session_id})
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not load saved addresses. Please try again.",
+        )
+
+    return {
+        **payload,
+        "message": "Addresses loaded.",
+    }
+
+
+@router.post(
+    "/addresses",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AddressMutationResponse,
+    summary="Create a structured delivery address",
+)
+async def create_address(
+    body: AddressCreateRequest,
+    session_id: str = Depends(get_session),
+) -> dict:
+    try:
+        address = await farmer_service.create_delivery_address(
+            session_id=session_id,
+            unit=body.unit.strip(),
+            street=body.street.strip(),
+            city=body.city.strip(),
+            state=body.state.strip(),
+            country=body.country.strip(),
+            postal_code=body.postal_code.strip(),
+            delivery_phone=body.delivery_phone.strip(),
+            set_default=body.set_default,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except Exception:
+        log.exception("create_address_failed", extra={"session_id": session_id})
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not save address. Please try again.",
+        )
+
+    return {
+        "address": address,
+        "message": "Address saved.",
+    }
+
+
+@router.put(
+    "/addresses/{address_id}",
+    status_code=status.HTTP_200_OK,
+    response_model=AddressMutationResponse,
+    summary="Update a saved delivery address",
+)
+async def update_address(
+    address_id: str,
+    body: AddressUpdateRequest,
+    session_id: str = Depends(get_session),
+) -> dict:
+    try:
+        address = await farmer_service.update_delivery_address(
+            session_id=session_id,
+            address_id=address_id,
+            unit=body.unit.strip(),
+            street=body.street.strip(),
+            city=body.city.strip(),
+            state=body.state.strip(),
+            country=body.country.strip(),
+            postal_code=body.postal_code.strip(),
+            delivery_phone=body.delivery_phone.strip(),
+            set_default=body.set_default,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except Exception:
+        log.exception(
+            "update_address_failed",
+            extra={"session_id": session_id, "address_id": address_id},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not update address. Please try again.",
+        )
+
+    return {
+        "address": address,
+        "message": "Address updated.",
+    }
+
+
+@router.delete(
+    "/addresses/{address_id}",
+    status_code=status.HTTP_200_OK,
+    response_model=AddressDeleteResponse,
+    summary="Delete a saved delivery address",
+)
+async def delete_address(
+    address_id: str,
+    session_id: str = Depends(get_session),
+) -> dict:
+    try:
+        payload = await farmer_service.delete_delivery_address(
+            session_id=session_id,
+            address_id=address_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except Exception:
+        log.exception(
+            "delete_address_failed",
+            extra={"session_id": session_id, "address_id": address_id},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not delete address. Please try again.",
+        )
+
+    return {
+        **payload,
+        "message": "Address deleted.",
+    }
+
+
+@router.post(
+    "/addresses/select",
+    status_code=status.HTTP_200_OK,
+    response_model=AddressMutationResponse,
+    summary="Select default delivery address for checkout",
+)
+async def select_address(
+    body: AddressSelectRequest,
+    session_id: str = Depends(get_session),
+) -> dict:
+    try:
+        address = await farmer_service.select_delivery_address(
+            session_id=session_id,
+            address_id=body.address_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except Exception:
+        log.exception("select_address_failed", extra={"session_id": session_id})
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not select address. Please try again.",
+        )
+
+    return {
+        "address": address,
+        "message": "Address selected.",
+    }
+
+
 @router.put(
     "/delivery-address",
     status_code=status.HTTP_200_OK,
@@ -380,6 +606,45 @@ async def set_delivery_address(
     body: DeliveryAddressRequest,
     session_id: str = Depends(get_session),
 ) -> dict:
+    has_structured = all(
+        [
+            body.unit,
+            body.street,
+            body.city,
+            body.state,
+            body.country,
+            body.postal_code,
+            body.delivery_phone,
+        ]
+    )
+
+    if has_structured:
+        try:
+            created = await farmer_service.create_delivery_address(
+                session_id=session_id,
+                unit=(body.unit or "").strip(),
+                street=(body.street or "").strip(),
+                city=(body.city or "").strip(),
+                state=(body.state or "").strip(),
+                country=(body.country or "").strip(),
+                postal_code=(body.postal_code or "").strip(),
+                delivery_phone=(body.delivery_phone or "").strip(),
+                set_default=True,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+        except Exception:
+            log.exception("set_delivery_address_structured_failed", extra={"session_id": session_id})
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Could not save delivery address. Please try again.",
+            )
+
+        return {
+            "address": created["formatted"],
+            "message": "Delivery address saved.",
+        }
+
     candidate_address = (body.address or body.deliveryAddress or "").strip()
     if len(candidate_address) < 8:
         log.warning(

@@ -29,6 +29,7 @@ from google.adk.plugins import ReflectAndRetryToolPlugin
 from google.adk.tools.tool_context import ToolContext
 
 from backend.agent.tools.cart import manage_cart
+from backend.agent.tools.address_book import manage_delivery_address
 from backend.agent.tools.checkout import generate_checkout_link
 from backend.agent.tools.disease import search_disease_matches
 from backend.agent.tools.identify_product import identify_product_from_frame
@@ -183,6 +184,7 @@ def _tool_with_logging(tool_fn: Callable[..., Any]) -> Callable[..., Any]:
 
 
 manage_cart = _tool_with_logging(manage_cart)
+manage_delivery_address = _tool_with_logging(manage_delivery_address)
 generate_checkout_link = _tool_with_logging(generate_checkout_link)
 search_disease_matches = _tool_with_logging(search_disease_matches)
 identify_product_from_frame = _tool_with_logging(identify_product_from_frame)
@@ -270,6 +272,10 @@ Fatima drives the order forward at every step:
 2. Add to cart → Confirm item and total → "Anything else, or should I prepare checkout?"
 3. Any time farmer changes mind or quantity → update_cart immediately
 4. Before checkout, ensure delivery address is captured and confirmed.
+  Delivery address must be structured with these fields only:
+  unit, street, city, state, country, postal code, delivery phone.
+  Collect missing fields one by one in natural conversation.
+  Use manage_delivery_address to create/update/select addresses.
 5. Farmer agrees to proceed → generate_checkout_link.
 6. Tell the farmer to complete payment in the Paystack prompt.
 7. Only after PAYMENT_CONFIRMED arrives should Fatima treat the order as confirmed.
@@ -312,6 +318,12 @@ manage_cart(action, phone, product_id?, qty?)
   Call when: farmer explicitly agrees to add a product. action = "add", "remove", "clear".
   Always confirm product name and price before calling.
 
+manage_delivery_address(action, phone, address_id?, unit?, street?, city?, state?, country?, postal_code?, delivery_phone?, set_default?)
+  Call when: farmer wants to add, edit, delete, select, or list delivery addresses.
+  Address fields required for create/update:
+  unit, street, city, state, country, postal_code, delivery_phone.
+  During conversation, ask missing fields one by one.
+
 update_cart(phone, product_id, quantity)
   Call when: farmer changes a quantity or removes an item from an existing cart.
   quantity=0 removes the item.
@@ -343,6 +355,7 @@ NEVER call more search_products than necessary — present the cached list befor
 NEVER reveal distributor names, database names, tool names, or backend systems to the farmer.
 NEVER claim order confirmation before payment webhook confirmation.
 NEVER proceed to checkout without a delivery address.
+NEVER request a single free-text full address if structured fields are missing.
 NEVER skip checkout and leave the conversation at "here are your products." Close the sale.
 If search_disease_matches confidence is below 0.7, tell the farmer clearly and suggest a vet.
 
@@ -455,6 +468,7 @@ root_agent = LlmAgent(
         identify_product_from_frame,
         # Cart & order
         manage_cart,
+        manage_delivery_address,
         update_cart,
         place_order,
         generate_checkout_link,

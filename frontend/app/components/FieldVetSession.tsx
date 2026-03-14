@@ -49,6 +49,32 @@ import { CartOverlay } from './CartOverlay';
 
 import type { Product } from '@/app/types/events';
 
+type AddressForm = {
+  unit: string;
+  street: string;
+  city: string;
+  state: string;
+  country: string;
+  postal_code: string;
+  delivery_phone: string;
+};
+
+type SavedAddress = AddressForm & {
+  id: string;
+  is_default: boolean;
+  formatted: string;
+};
+
+const EMPTY_ADDRESS_FORM: AddressForm = {
+  unit: '',
+  street: '',
+  city: '',
+  state: '',
+  country: 'Nigeria',
+  postal_code: '',
+  delivery_phone: '',
+};
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function FieldVetSession() {
@@ -151,7 +177,11 @@ export function FieldVetSession() {
 
   // ── Delivery address modal state ───────────────────────────────────────────
   const [showAddressModal, setShowAddressModal] = useState(false);
-  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [addresses, setAddresses] = useState<SavedAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [addressForm, setAddressForm] = useState<AddressForm>(EMPTY_ADDRESS_FORM);
+  const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
+  const [setDefaultOnSave, setSetDefaultOnSave] = useState(true);
   const [addressLoading, setAddressLoading] = useState(false);
   const [addressSaving, setAddressSaving] = useState(false);
   const [addressError, setAddressError] = useState<string | null>(null);
@@ -162,57 +192,184 @@ export function FieldVetSession() {
       ? 'https://fieldvet-backend-1041869895037.us-central1.run.app'
       : 'http://localhost:8000');
 
-  const loadDeliveryAddress = useCallback(async () => {
+  const loadAddresses = useCallback(async () => {
     setAddressLoading(true);
     setAddressError(null);
     try {
-      const resp = await fetch(`${API_BASE}/farmers/delivery-address`, {
+      const resp = await fetch(`${API_BASE}/farmers/addresses`, {
         method: 'GET',
         credentials: 'include',
       });
       if (!resp.ok) {
         throw new Error('Could not load address');
       }
-      const data = (await resp.json()) as { address?: string | null };
-      setDeliveryAddress(data.address ?? '');
+      const data = (await resp.json()) as {
+        selected_id?: string | null;
+        addresses?: SavedAddress[];
+      };
+      const rows = data.addresses ?? [];
+      setAddresses(rows);
+      setSelectedAddressId(data.selected_id ?? null);
+
+      if (rows.length === 0) {
+        setEditingAddressId(null);
+        setAddressForm(EMPTY_ADDRESS_FORM);
+        setSetDefaultOnSave(true);
+      }
     } catch {
-      setAddressError('Could not load your saved address. You can still enter a new one.');
+      setAddressError('Could not load your saved addresses. You can still add a new one.');
     } finally {
       setAddressLoading(false);
     }
   }, [API_BASE]);
 
-  const saveDeliveryAddress = useCallback(async () => {
-    const trimmed = deliveryAddress.trim();
-    if (trimmed.length < 8) {
-      setAddressError('Please enter a full delivery address (minimum 8 characters).');
+  const updateAddressFormField = useCallback((field: keyof AddressForm, value: string) => {
+    setAddressForm((prev) => ({ ...prev, [field]: value }));
+  }, []);
+
+  const startCreateAddress = useCallback(() => {
+    setEditingAddressId(null);
+    setAddressForm(EMPTY_ADDRESS_FORM);
+    setSetDefaultOnSave(addresses.length === 0);
+    setAddressError(null);
+  }, [addresses.length]);
+
+  const startEditAddress = useCallback((addr: SavedAddress) => {
+    setEditingAddressId(addr.id);
+    setAddressForm({
+      unit: addr.unit,
+      street: addr.street,
+      city: addr.city,
+      state: addr.state,
+      country: addr.country,
+      postal_code: addr.postal_code,
+      delivery_phone: addr.delivery_phone,
+    });
+    setSetDefaultOnSave(addr.is_default);
+    setAddressError(null);
+  }, []);
+
+  const validateAddressForm = useCallback((): string | null => {
+    const requiredEntries: [keyof AddressForm, string][] = [
+      ['unit', 'unit'],
+      ['street', 'street'],
+      ['city', 'city'],
+      ['state', 'state'],
+      ['country', 'country'],
+      ['postal_code', 'postal code'],
+      ['delivery_phone', 'delivery phone number'],
+    ];
+    for (const [field, label] of requiredEntries) {
+      if (!addressForm[field].trim()) {
+        return `Please enter your ${label}.`;
+      }
+    }
+    return null;
+  }, [addressForm]);
+
+  const saveAddress = useCallback(async () => {
+    const validationError = validateAddressForm();
+    if (validationError) {
+      setAddressError(validationError);
       return;
     }
 
     setAddressSaving(true);
     setAddressError(null);
     try {
-      const resp = await fetch(`${API_BASE}/farmers/delivery-address`, {
-        method: 'PUT',
+      const payload = {
+        ...addressForm,
+        set_default: setDefaultOnSave,
+      };
+      const endpoint = editingAddressId
+        ? `${API_BASE}/farmers/addresses/${editingAddressId}`
+        : `${API_BASE}/farmers/addresses`;
+      const method = editingAddressId ? 'PUT' : 'POST';
+
+      const resp = await fetch(endpoint, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ address: trimmed }),
+        body: JSON.stringify(payload),
       });
       if (!resp.ok) {
         throw new Error('Could not save address');
       }
 
-      setShowAddressModal(false);
+      await loadAddresses();
+      setEditingAddressId(null);
+      setAddressForm(EMPTY_ADDRESS_FORM);
+      setSetDefaultOnSave(false);
       setNotifications((prev) => [
         ...prev,
-        { id: Date.now(), message: 'Delivery address saved.', time: new Date(), level: 'success' },
+        {
+          id: Date.now(),
+          message: editingAddressId ? 'Address updated.' : 'Address saved.',
+          time: new Date(),
+          level: 'success',
+        },
       ]);
     } catch {
-      setAddressError('Could not save delivery address. Please try again.');
+      setAddressError('Could not save address. Please try again.');
     } finally {
       setAddressSaving(false);
     }
-  }, [API_BASE, deliveryAddress]);
+  }, [API_BASE, addressForm, editingAddressId, loadAddresses, setDefaultOnSave, validateAddressForm]);
+
+  const selectAddress = useCallback(async (addressId: string) => {
+    setAddressSaving(true);
+    setAddressError(null);
+    try {
+      const resp = await fetch(`${API_BASE}/farmers/addresses/select`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ address_id: addressId }),
+      });
+      if (!resp.ok) {
+        throw new Error('Could not select address');
+      }
+
+      setSelectedAddressId(addressId);
+      await loadAddresses();
+      setNotifications((prev) => [
+        ...prev,
+        { id: Date.now(), message: 'Address selected for delivery.', time: new Date(), level: 'success' },
+      ]);
+    } catch {
+      setAddressError('Could not select this address. Please try again.');
+    } finally {
+      setAddressSaving(false);
+    }
+  }, [API_BASE, loadAddresses]);
+
+  const deleteAddress = useCallback(async (addressId: string) => {
+    setAddressSaving(true);
+    setAddressError(null);
+    try {
+      const resp = await fetch(`${API_BASE}/farmers/addresses/${addressId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!resp.ok) {
+        throw new Error('Could not delete address');
+      }
+
+      if (editingAddressId === addressId) {
+        setEditingAddressId(null);
+        setAddressForm(EMPTY_ADDRESS_FORM);
+      }
+      await loadAddresses();
+      setNotifications((prev) => [
+        ...prev,
+        { id: Date.now(), message: 'Address deleted.', time: new Date(), level: 'success' },
+      ]);
+    } catch {
+      setAddressError('Could not delete address. Please try again.');
+    } finally {
+      setAddressSaving(false);
+    }
+  }, [API_BASE, editingAddressId, loadAddresses]);
 
   useEffect(() => {
     if (lastError) {
@@ -225,6 +382,7 @@ export function FieldVetSession() {
 
       if (lastError.toLowerCase().includes('delivery address')) {
         setShowAddressModal(true);
+        void loadAddresses();
       }
 
       // Step 1: Trigger the CSS exit animation at 4.5 seconds
@@ -266,8 +424,8 @@ export function FieldVetSession() {
   }, [paymentConfirmed]);
 
   useEffect(() => {
-    void loadDeliveryAddress();
-  }, [loadDeliveryAddress]);
+    void loadAddresses();
+  }, [loadAddresses]);
 
   // ── Media pipeline ──────────────────────────────────────────────────────────
   const {
@@ -479,7 +637,7 @@ export function FieldVetSession() {
           onShowNotifications={() => setShowErrorLog(true)}
           onManageAddress={() => {
             setShowAddressModal(true);
-            void loadDeliveryAddress();
+            void loadAddresses();
           }}
           onShowCart={handleShowCart}
           onAuthAction={handleAuthAction}
@@ -703,35 +861,257 @@ export function FieldVetSession() {
             }}
           >
             <h3 style={{ margin: 0, color: 'var(--color-text)', fontFamily: 'var(--font-fraunces)', fontSize: '20px' }}>
-              Delivery Address
+              Delivery Addresses
             </h3>
             <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '13px', lineHeight: 1.5 }}>
-              Add the full address where your order should be delivered. Checkout is blocked until this is set.
+              Save one or more addresses, then select your delivery address for checkout.
             </p>
-            <textarea
-              value={deliveryAddress}
-              onChange={(e) => setDeliveryAddress(e.target.value)}
-              placeholder="House number, street, landmark, LGA, state"
-              rows={4}
-              disabled={addressLoading || addressSaving}
+
+            <div
               style={{
-                width: '100%',
-                resize: 'vertical',
-                minHeight: '110px',
-                background: 'var(--color-bg)',
-                color: 'var(--color-text)',
-                border: '1px solid var(--color-border)',
-                borderRadius: '12px',
-                padding: '12px',
-                fontSize: '14px',
+                maxHeight: '180px',
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                paddingRight: '2px',
               }}
-            />
+            >
+              {addressLoading ? (
+                <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '13px' }}>Loading addresses...</p>
+              ) : addresses.length === 0 ? (
+                <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '13px' }}>
+                  No saved addresses yet.
+                </p>
+              ) : (
+                addresses.map((addr) => {
+                  const isSelected = addr.id === selectedAddressId;
+                  return (
+                    <div
+                      key={addr.id}
+                      style={{
+                        border: `1px solid ${isSelected ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                        borderRadius: '12px',
+                        padding: '10px',
+                        background: isSelected
+                          ? 'color-mix(in srgb, var(--color-primary) 14%, transparent)'
+                          : 'var(--color-bg)',
+                      }}
+                    >
+                      <p style={{ margin: 0, color: 'var(--color-text)', fontSize: '13px', fontWeight: 700 }}>
+                        {addr.formatted}
+                      </p>
+                      <p style={{ margin: '4px 0 0', color: 'var(--color-text-muted)', fontSize: '12px' }}>
+                        Delivery phone: {addr.delivery_phone}
+                      </p>
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                        {!isSelected && (
+                          <button
+                            onClick={() => void selectAddress(addr.id)}
+                            disabled={addressSaving}
+                            style={{
+                              minHeight: '34px',
+                              borderRadius: '8px',
+                              border: 'none',
+                              background: 'var(--color-primary)',
+                              color: 'var(--color-white)',
+                              padding: '0 10px',
+                              fontSize: '12px',
+                              fontWeight: 700,
+                            }}
+                          >
+                            Select
+                          </button>
+                        )}
+                        <button
+                          onClick={() => startEditAddress(addr)}
+                          disabled={addressSaving}
+                          style={{
+                            minHeight: '34px',
+                            borderRadius: '8px',
+                            border: '1px solid var(--color-border)',
+                            background: 'transparent',
+                            color: 'var(--color-text)',
+                            padding: '0 10px',
+                            fontSize: '12px',
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => void deleteAddress(addr.id)}
+                          disabled={addressSaving}
+                          style={{
+                            minHeight: '34px',
+                            borderRadius: '8px',
+                            border: '1px solid color-mix(in srgb, var(--color-error) 45%, var(--color-border))',
+                            background: 'transparent',
+                            color: 'var(--color-error)',
+                            padding: '0 10px',
+                            fontSize: '12px',
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h4 style={{ margin: 0, color: 'var(--color-text)', fontSize: '15px' }}>
+                {editingAddressId ? 'Edit Address' : 'New Address'}
+              </h4>
+              <button
+                onClick={startCreateAddress}
+                disabled={addressSaving}
+                style={{
+                  minHeight: '32px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--color-border)',
+                  background: 'transparent',
+                  color: 'var(--color-text)',
+                  padding: '0 10px',
+                  fontSize: '12px',
+                }}
+              >
+                Add New
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
+              <input
+                value={addressForm.unit}
+                onChange={(e) => updateAddressFormField('unit', e.target.value)}
+                placeholder="Unit"
+                disabled={addressLoading || addressSaving}
+                style={{
+                  minHeight: '44px',
+                  background: 'var(--color-bg)',
+                  color: 'var(--color-text)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '10px',
+                  padding: '0 12px',
+                  fontSize: '14px',
+                }}
+              />
+              <input
+                value={addressForm.street}
+                onChange={(e) => updateAddressFormField('street', e.target.value)}
+                placeholder="Street"
+                disabled={addressLoading || addressSaving}
+                style={{
+                  minHeight: '44px',
+                  background: 'var(--color-bg)',
+                  color: 'var(--color-text)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '10px',
+                  padding: '0 12px',
+                  fontSize: '14px',
+                }}
+              />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <input
+                  value={addressForm.city}
+                  onChange={(e) => updateAddressFormField('city', e.target.value)}
+                  placeholder="City"
+                  disabled={addressLoading || addressSaving}
+                  style={{
+                    minHeight: '44px',
+                    background: 'var(--color-bg)',
+                    color: 'var(--color-text)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: '10px',
+                    padding: '0 12px',
+                    fontSize: '14px',
+                  }}
+                />
+                <input
+                  value={addressForm.state}
+                  onChange={(e) => updateAddressFormField('state', e.target.value)}
+                  placeholder="State"
+                  disabled={addressLoading || addressSaving}
+                  style={{
+                    minHeight: '44px',
+                    background: 'var(--color-bg)',
+                    color: 'var(--color-text)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: '10px',
+                    padding: '0 12px',
+                    fontSize: '14px',
+                  }}
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <input
+                  value={addressForm.country}
+                  onChange={(e) => updateAddressFormField('country', e.target.value)}
+                  placeholder="Country"
+                  disabled={addressLoading || addressSaving}
+                  style={{
+                    minHeight: '44px',
+                    background: 'var(--color-bg)',
+                    color: 'var(--color-text)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: '10px',
+                    padding: '0 12px',
+                    fontSize: '14px',
+                  }}
+                />
+                <input
+                  value={addressForm.postal_code}
+                  onChange={(e) => updateAddressFormField('postal_code', e.target.value)}
+                  placeholder="Postal code"
+                  disabled={addressLoading || addressSaving}
+                  style={{
+                    minHeight: '44px',
+                    background: 'var(--color-bg)',
+                    color: 'var(--color-text)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: '10px',
+                    padding: '0 12px',
+                    fontSize: '14px',
+                  }}
+                />
+              </div>
+              <input
+                value={addressForm.delivery_phone}
+                onChange={(e) => updateAddressFormField('delivery_phone', e.target.value)}
+                placeholder="Delivery phone number"
+                disabled={addressLoading || addressSaving}
+                style={{
+                  minHeight: '44px',
+                  background: 'var(--color-bg)',
+                  color: 'var(--color-text)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '10px',
+                  padding: '0 12px',
+                  fontSize: '14px',
+                }}
+              />
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-text)', fontSize: '13px' }}>
+              <input
+                type="checkbox"
+                checked={setDefaultOnSave}
+                onChange={(e) => setSetDefaultOnSave(e.target.checked)}
+                disabled={addressLoading || addressSaving}
+              />
+              Use as default delivery address
+            </label>
+
             {addressError && (
               <p style={{ margin: 0, color: 'var(--color-error)', fontSize: '12px' }}>{addressError}</p>
             )}
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button
-                onClick={() => setShowAddressModal(false)}
+                onClick={() => {
+                  setShowAddressModal(false);
+                  setAddressError(null);
+                }}
                 disabled={addressSaving}
                 style={{
                   minHeight: '44px',
@@ -745,7 +1125,7 @@ export function FieldVetSession() {
                 Cancel
               </button>
               <button
-                onClick={() => void saveDeliveryAddress()}
+                onClick={() => void saveAddress()}
                 disabled={addressLoading || addressSaving}
                 style={{
                   minHeight: '44px',
@@ -757,7 +1137,7 @@ export function FieldVetSession() {
                   fontWeight: 700,
                 }}
               >
-                {addressSaving ? 'Saving…' : 'Save Address'}
+                {addressSaving ? 'Saving...' : editingAddressId ? 'Update Address' : 'Save Address'}
               </button>
             </div>
           </div>

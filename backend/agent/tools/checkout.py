@@ -203,14 +203,42 @@ async def generate_checkout_link(
     from backend.db.rls import rls_context
     try:
         async with rls_context(auth_session_id, phone=phone) as conn:
-            row = await conn.fetchrow(
+            addr_row = await conn.fetchrow(
                 """
-                SELECT delivery_address
-                  FROM public.carts
+                SELECT unit, street, city, state, country, postal_code
+                  FROM public.farmer_addresses
                  WHERE phone = $1
+                   AND is_default = true
+                 ORDER BY updated_at DESC
+                 LIMIT 1
                 """,
                 phone,
             )
+
+            if addr_row:
+                addr_data = dict(addr_row)
+                structured_parts = [
+                    str(addr_data.get("unit") or "").strip(),
+                    str(addr_data.get("street") or "").strip(),
+                    str(addr_data.get("city") or "").strip(),
+                    str(addr_data.get("state") or "").strip(),
+                    str(addr_data.get("country") or "").strip(),
+                    str(addr_data.get("postal_code") or "").strip(),
+                ]
+                if any(structured_parts):
+                    delivery_address = ", ".join(p for p in structured_parts if p)
+                else:
+                    delivery_address = str(addr_data.get("delivery_address") or "").strip()
+            else:
+                legacy_row = await conn.fetchrow(
+                    """
+                    SELECT delivery_address
+                      FROM public.carts
+                     WHERE phone = $1
+                    """,
+                    phone,
+                )
+                delivery_address = ((legacy_row["delivery_address"] if legacy_row else "") or "").strip()
     except Exception as db_exc:
         logger.error("generate_checkout_link: failed to load cart address: %s", db_exc)
         return {
@@ -219,7 +247,6 @@ async def generate_checkout_link(
             "message": "Could not verify your delivery address. Please try again.",
         }
 
-    delivery_address = ((row["delivery_address"] if row else "") or "").strip()
     if len(delivery_address) < 8:
         return {
             "status": "error",

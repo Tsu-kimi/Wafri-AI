@@ -287,6 +287,389 @@ async def _resolve_phone_from_session(session_id: str) -> str | None:
     return str(row["phone_number"])
 
 
+def _format_address_row(row: Any) -> dict[str, Any]:
+    """Convert a farmer_addresses row to API-safe dict including display string."""
+    created_at = row["created_at"] if "created_at" in row else None
+    updated_at = row["updated_at"] if "updated_at" in row else None
+    address = {
+        "id": str(row["id"]),
+        "unit": str(row["unit"] or "").strip(),
+        "street": str(row["street"] or "").strip(),
+        "city": str(row["city"] or "").strip(),
+        "state": str(row["state"] or "").strip(),
+        "country": str(row["country"] or "").strip(),
+        "postal_code": str(row["postal_code"] or "").strip(),
+        "delivery_phone": str(row["delivery_phone"] or "").strip(),
+        "is_default": bool(row["is_default"]),
+        "created_at": created_at.isoformat() if isinstance(created_at, datetime) else None,
+        "updated_at": updated_at.isoformat() if isinstance(updated_at, datetime) else None,
+    }
+    address["formatted"] = (
+        f"{address['unit']}, {address['street']}, {address['city']}, "
+        f"{address['state']}, {address['country']} {address['postal_code']}"
+    )
+    return address
+
+
+async def _sync_cart_delivery_address(
+    conn: Any,
+    phone: str,
+    session_id: str,
+    formatted_address: str,
+) -> None:
+    """Keep carts.delivery_address in sync with the selected structured address."""
+    row = await conn.fetchrow(
+        "SELECT id FROM public.carts WHERE phone = $1",
+        phone,
+    )
+
+    if row:
+        await conn.execute(
+            """
+            UPDATE public.carts
+               SET delivery_address = $1,
+                   session_id       = $2,
+                   updated_at       = NOW()
+             WHERE phone = $3
+            """,
+            formatted_address,
+            session_id,
+            phone,
+        )
+        return
+
+    await conn.execute(
+        """
+        INSERT INTO public.carts
+            (phone, items_json, total_amount, delivery_address, session_id, status)
+        VALUES
+            ($1, '[]'::jsonb, 0, $2, $3, 'active')
+        """,
+        phone,
+        formatted_address,
+        session_id,
+    )
+
+
+async def list_delivery_addresses(session_id: str) -> dict[str, Any]:
+    """Return all saved addresses for the logged-in farmer plus current selection."""
+    phone = await _resolve_phone_from_session(session_id)
+    if not phone:
+        return {"selected_id": None, "addresses": []}
+
+    async with rls_context(session_id, phone=phone) as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, unit, street, city, state, country, postal_code,
+                   delivery_phone, is_default, created_at, updated_at
+              FROM public.farmer_addresses
+             WHERE phone = $1
+             ORDER BY is_default DESC, updated_at DESC, created_at DESC
+            """,
+            phone,
+        )
+
+    addresses = [_format_address_row(row) for row in rows]
+    selected = next((a for a in addresses if a["is_default"]), None)
+    return {
+        "selected_id": selected["id"] if selected else None,
+        "addresses": addresses,
+    }
+
+
+async def create_delivery_address(
+    session_id: str,
+    *,
+    unit: str,
+    street: str,
+    city: str,
+    state: str,
+    country: str,
+    postal_code: str,
+    delivery_phone: str,
+    set_default: bool = False,
+) -> dict[str, Any]:
+    """Create a new structured delivery address for the logged-in farmer."""
+    phone = await _resolve_phone_from_session(session_id)
+    if not phone:
+        raise ValueError("No farmer phone is linked to this session yet.")
+
+    async with rls_context(session_id, phone=phone) as conn:
+        count_row = await conn.fetchrow(
+            "SELECT COUNT(*) AS n FROM public.farmer_addresses WHERE phone = $1",
+            phone,
+        )
+        has_existing = bool(count_row and count_row["n"])
+        make_default = bool(set_default or not has_existing)
+
+        if make_default:
+            await conn.execute(
+                "UPDATE public.farmer_addresses SET is_default = false WHERE phone = $1",
+                phone,
+            )
+
+        row = await conn.fetchrow(
+            """
+            INSERT INTO public.farmer_addresses
+                (phone, unit, street, city, state, country, postal_code, delivery_phone, is_default)
+            VALUES
+                ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id, unit, street, city, state, country, postal_code,
+                      delivery_phone, is_default, created_at, updated_at
+            """,
+            phone,
+            unit,
+            street,
+            city,
+            state,
+            country,
+            postal_code,
+            delivery_phone,
+            make_default,
+        )
+
+        address = _format_address_row(row)
+        if address["is_default"]:
+            await _sync_cart_delivery_address(conn, phone, session_id, address["formatted"])
+
+    return address
+
+
+async def update_delivery_address(
+    session_id: str,
+    address_id: str,
+    *,
+    unit: str,
+    street: str,
+    city: str,
+    state: str,
+    country: str,
+    postal_code: str,
+    delivery_phone: str,
+    set_default: bool = False,
+) -> dict[str, Any]:
+    """Update an existing delivery address belonging to the logged-in farmer."""
+    phone = await _resolve_phone_from_session(session_id)
+    if not phone:
+        raise ValueError("No farmer phone is linked to this session yet.")
+
+    async with rls_context(session_id, phone=phone) as conn:
+        existing = await conn.fetchrow(
+            "SELECT id, is_default FROM public.farmer_addresses WHERE id = $1 AND phone = $2",
+            address_id,
+            phone,
+        )
+        if not existing:
+            raise ValueError("Address not found.")
+
+        make_default = bool(set_default or existing["is_default"])
+        if make_default:
+            await conn.execute(
+                "UPDATE public.farmer_addresses SET is_default = false WHERE phone = $1",
+                phone,
+            )
+
+        row = await conn.fetchrow(
+            """
+            UPDATE public.farmer_addresses
+               SET unit = $1,
+                   street = $2,
+                   city = $3,
+                   state = $4,
+                   country = $5,
+                   postal_code = $6,
+                   delivery_phone = $7,
+                   is_default = $8
+             WHERE id = $9
+               AND phone = $10
+            RETURNING id, unit, street, city, state, country, postal_code,
+                      delivery_phone, is_default, created_at, updated_at
+            """,
+            unit,
+            street,
+            city,
+            state,
+            country,
+            postal_code,
+            delivery_phone,
+            make_default,
+            address_id,
+            phone,
+        )
+        if not row:
+            raise ValueError("Address not found.")
+
+        address = _format_address_row(row)
+        if address["is_default"]:
+            await _sync_cart_delivery_address(conn, phone, session_id, address["formatted"])
+
+    return address
+
+
+async def delete_delivery_address(session_id: str, address_id: str) -> dict[str, Any]:
+    """Delete a delivery address and keep a default selected when possible."""
+    phone = await _resolve_phone_from_session(session_id)
+    if not phone:
+        raise ValueError("No farmer phone is linked to this session yet.")
+
+    async with rls_context(session_id, phone=phone) as conn:
+        deleted = await conn.fetchrow(
+            """
+            DELETE FROM public.farmer_addresses
+             WHERE id = $1
+               AND phone = $2
+            RETURNING id, is_default
+            """,
+            address_id,
+            phone,
+        )
+        if not deleted:
+            raise ValueError("Address not found.")
+
+        selected = await conn.fetchrow(
+            """
+            SELECT id, unit, street, city, state, country, postal_code,
+                   delivery_phone, is_default, created_at, updated_at
+              FROM public.farmer_addresses
+             WHERE phone = $1
+               AND is_default = true
+             ORDER BY updated_at DESC
+             LIMIT 1
+            """,
+            phone,
+        )
+
+        if not selected:
+            selected = await conn.fetchrow(
+                """
+                SELECT id, unit, street, city, state, country, postal_code,
+                       delivery_phone, is_default, created_at, updated_at
+                  FROM public.farmer_addresses
+                 WHERE phone = $1
+                 ORDER BY updated_at DESC, created_at DESC
+                 LIMIT 1
+                """,
+                phone,
+            )
+            if selected:
+                await conn.execute(
+                    "UPDATE public.farmer_addresses SET is_default = true WHERE id = $1",
+                    selected["id"],
+                )
+                selected = await conn.fetchrow(
+                    """
+                    SELECT id, unit, street, city, state, country, postal_code,
+                           delivery_phone, is_default, created_at, updated_at
+                      FROM public.farmer_addresses
+                     WHERE id = $1
+                    """,
+                    selected["id"],
+                )
+
+        if selected:
+            selected_address = _format_address_row(selected)
+            await _sync_cart_delivery_address(conn, phone, session_id, selected_address["formatted"])
+        else:
+            await conn.execute(
+                """
+                UPDATE public.carts
+                   SET delivery_address = NULL,
+                       updated_at = NOW()
+                 WHERE phone = $1
+                """,
+                phone,
+            )
+
+    return {
+        "deleted_id": address_id,
+        "selected_id": str(selected["id"]) if selected else None,
+    }
+
+
+async def select_delivery_address(session_id: str, address_id: str) -> dict[str, Any]:
+    """Mark one delivery address as selected/default for checkout."""
+    phone = await _resolve_phone_from_session(session_id)
+    if not phone:
+        raise ValueError("No farmer phone is linked to this session yet.")
+
+    async with rls_context(session_id, phone=phone) as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, unit, street, city, state, country, postal_code,
+                   delivery_phone, is_default, created_at, updated_at
+              FROM public.farmer_addresses
+             WHERE id = $1
+               AND phone = $2
+            """,
+            address_id,
+            phone,
+        )
+        if not row:
+            raise ValueError("Address not found.")
+
+        await conn.execute(
+            "UPDATE public.farmer_addresses SET is_default = false WHERE phone = $1",
+            phone,
+        )
+        await conn.execute(
+            "UPDATE public.farmer_addresses SET is_default = true WHERE id = $1",
+            address_id,
+        )
+
+        selected = await conn.fetchrow(
+            """
+            SELECT id, unit, street, city, state, country, postal_code,
+                   delivery_phone, is_default, created_at, updated_at
+              FROM public.farmer_addresses
+             WHERE id = $1
+            """,
+            address_id,
+        )
+        address = _format_address_row(selected)
+        await _sync_cart_delivery_address(conn, phone, session_id, address["formatted"])
+
+    return address
+
+
+async def get_selected_delivery_address(session_id: str) -> dict[str, Any] | None:
+    """Return the currently selected/default structured address, if any."""
+    phone = await _resolve_phone_from_session(session_id)
+    if not phone:
+        return None
+
+    async with rls_context(session_id, phone=phone) as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, unit, street, city, state, country, postal_code,
+                   delivery_phone, is_default, created_at, updated_at
+              FROM public.farmer_addresses
+             WHERE phone = $1
+               AND is_default = true
+             ORDER BY updated_at DESC
+             LIMIT 1
+            """,
+            phone,
+        )
+
+        if not row:
+            row = await conn.fetchrow(
+                """
+                SELECT id, unit, street, city, state, country, postal_code,
+                       delivery_phone, is_default, created_at, updated_at
+                  FROM public.farmer_addresses
+                 WHERE phone = $1
+                 ORDER BY updated_at DESC, created_at DESC
+                 LIMIT 1
+                """,
+                phone,
+            )
+
+    if not row:
+        return None
+
+    return _format_address_row(row)
+
+
 async def get_delivery_address(session_id: str) -> str | None:
     """
     Fetch the latest saved delivery address for the logged-in farmer session.
@@ -296,6 +679,10 @@ async def get_delivery_address(session_id: str) -> str | None:
     phone = await _resolve_phone_from_session(session_id)
     if not phone:
         return None
+
+    selected = await get_selected_delivery_address(session_id)
+    if selected:
+        return str(selected["formatted"])
 
     async with rls_context(session_id, phone=phone) as conn:
         row = await conn.fetchrow(

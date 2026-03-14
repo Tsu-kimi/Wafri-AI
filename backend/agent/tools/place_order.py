@@ -192,6 +192,7 @@ async def place_order(
     total: float = 0.0
     order_ref: str = ""
     placed_at: str = ""
+    sms_phone: str = phone
 
     try:
         async with rls_context(auth_session_id, phone=phone) as conn:
@@ -260,6 +261,20 @@ async def place_order(
                 or None
             )
 
+            selected_addr = await conn.fetchrow(
+                """
+                SELECT delivery_phone
+                  FROM public.farmer_addresses
+                 WHERE phone = $1
+                   AND is_default = true
+                 ORDER BY updated_at DESC
+                 LIMIT 1
+                """,
+                phone,
+            )
+            if selected_addr and selected_addr["delivery_phone"]:
+                sms_phone = str(selected_addr["delivery_phone"]).strip() or phone
+
             if resolved_address:
                 await conn.execute(
                     """
@@ -300,7 +315,7 @@ async def place_order(
         }
 
     # ── 2. Dispatch Termii SMS (sync urllib — safe to call from async) ──────
-    sms_sent = _send_termii_sms(phone, order_ref, items, total)
+    sms_sent = _send_termii_sms(sms_phone, order_ref, items, total)
 
     if sms_sent:
         try:
