@@ -188,14 +188,35 @@ async def run_bridge(
     # Proactive greeting — Fatima speaks first on every session open.
     # Enqueue the trigger message BEFORE starting the tasks so it arrives
     # as the very first input the run_live() loop processes.
+    # Include stable session context so the greeting can be personalized.
     # ------------------------------------------------------------------
+    farmer_name = ""
+    farmer_state = ""
+    try:
+        active_session = await session_service.get_session(
+            app_name=runner.app_name,
+            user_id=user_id,
+            session_id=session_id,
+        )
+        if active_session:
+            farmer_name = str(active_session.state.get("farmer_name") or "").strip()
+            farmer_state = str(active_session.state.get("farmer_state") or "").strip()
+    except Exception as exc:
+        _log("warning", f"failed to load session context for greeting: {exc}", "GREETING_CTX_ERR")
+
+    greeting_parts = [
+        "The session has just started.",
+        "Greet the user warmly as Fatima and ask what is wrong with their animal or what you can help with today.",
+    ]
+    if farmer_name:
+        greeting_parts.append(f"The farmer's name is {farmer_name}. Use it in the greeting.")
+    if farmer_state:
+        greeting_parts.append(f"The farmer is already associated with {farmer_state} state. Keep that context in mind.")
+
     live_request_queue.send_content(
         types.Content(
             role="user",
-            parts=[types.Part(text=(
-                "The session has just started. Greet the user warmly as Fatima "
-                "and ask what is wrong with their animal or what you can help with today."
-            ))],
+            parts=[types.Part(text=" ".join(greeting_parts))],
         )
     )
     _log("info", "proactive greeting enqueued", "GREETING")

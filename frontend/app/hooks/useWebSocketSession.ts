@@ -407,10 +407,11 @@ export function useWebSocketSession({
           dispatch({ type: 'MODEL_ERROR', code: raw.code, message: raw.message });
           break;
 
-        // Backend sends this lowercase event immediately before AUDIO_FLUSH
-        // during a barge-in. AUDIO_FLUSH handles the audio queue; this just
-        // acknowledges the interruption began.
+        // Flush immediately on interruption so stale audio stops even before
+        // the follow-up AUDIO_FLUSH envelope arrives.
         case 'interrupted':
+          onAudioFlushRef.current();
+          dispatch({ type: 'AGENT_SPEAKING', value: false });
           break;
 
         case 'PAYMENT_CONFIRMED':
