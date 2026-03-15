@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, FormEvent, ChangeEvent } from 'react';
-import NextImage from 'next/image';
+import Image from 'next/image';
 import { Box, Gallery, AddSquare } from 'iconsax-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -299,10 +299,12 @@ export default function ProductsPage() {
               {/* Image */}
               <div style={{ height: 140, background: 'var(--color-bone)', position: 'relative', overflow: 'hidden' }}>
                 {p.image_url ? (
-                  <img
+                  <Image
                     src={p.image_url}
                     alt={p.name}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    fill
+                    sizes="(max-width: 400px) 100vw, 400px"
+                    style={{ objectFit: 'cover' }}
                   />
                 ) : (
                   <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -406,7 +408,7 @@ export default function ProductsPage() {
                     onClick={() => fileRef.current?.click()}
                   >
                     {imagePreview ? (
-                      <img src={imagePreview} alt="preview" style={{ maxHeight: 160, maxWidth: '100%', borderRadius: 8, objectFit: 'cover' }} />
+                      <Image src={imagePreview} alt="preview" width={320} height={160} unoptimized style={{ maxHeight: 160, maxWidth: '100%', borderRadius: 8, objectFit: 'cover' }} />
                     ) : (
                       <div style={{ padding: '20px 0' }}>
                         <Gallery size={48} variant="Bulk" color="var(--color-sage)" style={{ opacity: 0.3, marginBottom: 8 }} />

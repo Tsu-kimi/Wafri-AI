@@ -1,30 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, createContext, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import { Element3, Box, Bag2, Profile2User, SidebarLeft, SidebarRight } from 'iconsax-react';
 import logo from '@/app/assets/Green_Black___White_Modern_Creative_Agency_Typography_Logo-removebg-preview.png';
-
-// ── Admin auth context ─────────────────────────────────────────────────────
-
-interface AdminUser {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-}
-
-const AdminCtx = createContext<{
-  admin: AdminUser | null;
-  logout: () => Promise<void>;
-} | null>(null);
-
-export function useAdmin() {
-  const ctx = useContext(AdminCtx);
-  if (!ctx) throw new Error('useAdmin must be used inside AdminLayout');
-  return ctx;
-}
+import { AdminCtx, type AdminUser } from './admin-context';
 
 // ── Sidebar navigation items ────────────────────────────────────────────────
 
@@ -150,7 +131,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
           {/* Nav links */}
           <nav style={{ flex: 1, padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {NAV.map(({ href, label, icon }) => {
+            {NAV.map(({ href, label }) => {
               const active = href === '/admin' ? pathname === '/admin' : pathname.startsWith(href);
               return (
                 <a

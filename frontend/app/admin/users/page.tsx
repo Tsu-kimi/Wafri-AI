@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { People, Profile2User, Lock, UserTick } from 'iconsax-react';
+import { People, Lock, UserTick } from 'iconsax-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

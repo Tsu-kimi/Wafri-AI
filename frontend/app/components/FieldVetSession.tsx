@@ -414,7 +414,7 @@ export function FieldVetSession() {
         clearTimeout(clearTimer);
       };
     }
-  }, [lastError, clearError]);
+  }, [lastError, clearError, loadAddresses]);
 
   useEffect(() => {
     if (!paymentConfirmed) return;
