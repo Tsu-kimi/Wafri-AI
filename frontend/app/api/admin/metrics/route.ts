@@ -38,12 +38,12 @@ export async function GET(req: NextRequest) {
       .select('total_amount')
       .in('status', ['payment_received', 'ready_for_dispatch', 'dispatched', 'completed']),
 
-    // Recent 10 orders
+    // Recent 10 orders (by last activity so just-paid orders appear first)
     adminSupabase
       .from('carts')
-      .select('id, phone, farmer_name, total_amount, status, placed_at, created_at, last_known_state')
+      .select('id, phone, farmer_name, total_amount, status, placed_at, created_at, updated_at, last_known_state')
       .neq('status', 'active')
-      .order('created_at', { ascending: false })
+      .order('updated_at', { ascending: false })
       .limit(10),
 
     // Orders grouped by status

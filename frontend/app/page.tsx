@@ -17,6 +17,12 @@ import { FieldVetSession } from './components/FieldVetSession';
 const USER_IDENTITY_KEY = 'wafrivet_user_identity';
 const FARMER_KEY = 'wafrivet_farmer';
 
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ??
+  (process.env.NODE_ENV === 'production'
+    ? 'https://fieldvet-backend-1041869895037.us-central1.run.app'
+    : 'http://localhost:8000');
+
 export default function Home() {
   const router = useRouter();
   // 'onboarding' | 'auth' | 'session' | null
@@ -24,36 +30,68 @@ export default function Home() {
   const [step, setStep] = useState<'onboarding' | 'auth' | 'session' | null>(null);
 
   useEffect(() => {
-    setMounted(true);
+    let cancelled = false;
 
-    // Guard: require login before allowing access.
-    const farmer = localStorage.getItem(FARMER_KEY);
-    if (!farmer) {
-      router.replace('/login');
-      return;
-    }
+    const init = async () => {
+      setMounted(true);
 
-    let userIdentity = localStorage.getItem(USER_IDENTITY_KEY);
-    // Returning users: derive identity from login (FARMER_KEY) so we skip AuthScreen.
-    if (!userIdentity) {
+      // Guard: require login before allowing access.
+      const farmer = localStorage.getItem(FARMER_KEY);
+      if (!farmer) {
+        router.replace('/login');
+        return;
+      }
+
+      // Server-side session check: if the backend cookie has expired,
+      // treat the user as logged out and clear local identity.
       try {
-        const data = JSON.parse(farmer);
-        const phone = data.phone ?? data.phone_number ?? '';
-        if (phone) {
-          const identity = { phoneNumber: phone, name: data.name ?? '' };
-          localStorage.setItem(USER_IDENTITY_KEY, JSON.stringify(identity));
-          userIdentity = JSON.stringify(identity);
+        const resp = await fetch(`${API_BASE}/farmers/addresses`, {
+          method: 'GET',
+          credentials: 'include',
+        });
+        if (!resp.ok && (resp.status === 401 || resp.status === 403)) {
+          localStorage.removeItem(FARMER_KEY);
+          localStorage.removeItem(USER_IDENTITY_KEY);
+          sessionStorage.removeItem('wafrivet_user_id');
+          sessionStorage.removeItem('wafrivet_session_id');
+          router.replace('/login');
+          return;
         }
       } catch {
-        // ignore
+        // Network errors: fall through and use local identity so the
+        // app still works offline / on flaky connections.
       }
-    }
 
-    if (!userIdentity) {
-      setStep('auth');
-    } else {
-      setStep('session');
-    }
+      let userIdentity = localStorage.getItem(USER_IDENTITY_KEY);
+      // Returning users: derive identity from login (FARMER_KEY) so we skip AuthScreen.
+      if (!userIdentity) {
+        try {
+          const data = JSON.parse(farmer);
+          const phone = data.phone ?? data.phone_number ?? '';
+          if (phone) {
+            const identity = { phoneNumber: phone, name: data.name ?? '' };
+            localStorage.setItem(USER_IDENTITY_KEY, JSON.stringify(identity));
+            userIdentity = JSON.stringify(identity);
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      if (cancelled) return;
+
+      if (!userIdentity) {
+        setStep('auth');
+      } else {
+        setStep('session');
+      }
+    };
+
+    void init();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   const handleAuthComplete = (identity: { phoneNumber: string; name: string }) => {

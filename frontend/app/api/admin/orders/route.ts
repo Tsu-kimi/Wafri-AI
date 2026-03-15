@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
       'id, phone, farmer_name, total_amount, status, payment_reference, order_reference, delivery_address, last_known_state, placed_at, created_at, updated_at',
       { count: 'exact' }
     )
-    .order('created_at', { ascending: false })
+    .order('updated_at', { ascending: false })
     .range(from, to);
 
   if (status) query = query.eq('status', status);

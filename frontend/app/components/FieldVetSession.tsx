@@ -1002,28 +1002,50 @@ export function FieldVetSession() {
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h4 style={{ margin: 0, color: 'var(--color-text)', fontSize: '15px' }}>
-                {editingAddressId ? 'Edit Address' : 'New Address'}
-              </h4>
-              <button
-                onClick={startCreateAddress}
-                disabled={addressSaving}
-                style={{
-                  minHeight: '32px',
-                  borderRadius: '8px',
-                  border: '1px solid var(--color-border)',
-                  background: 'transparent',
-                  color: 'var(--color-text)',
-                  padding: '0 10px',
-                  fontSize: '12px',
-                }}
-              >
-                Add New
-              </button>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '8px',
+                flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, minWidth: 0 }}>
+                <h4 style={{ margin: 0, color: 'var(--color-text)', fontSize: '15px' }}>
+                  {editingAddressId ? 'Edit delivery address' : 'Add a new delivery address'}
+                </h4>
+                <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '12px' }}>
+                  We&apos;ll use this as the drop-off location for your order.
+                </p>
+              </div>
+              {addresses.length > 0 && (
+                <button
+                  onClick={startCreateAddress}
+                  disabled={addressSaving}
+                  style={{
+                    minHeight: '32px',
+                    borderRadius: '999px',
+                    border: '1px solid var(--color-border)',
+                    background: 'var(--color-surface-2)',
+                    color: 'var(--color-text)',
+                    padding: '0 14px',
+                    fontSize: '12px',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  + New address
+                </button>
+              )}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr',
+                gap: '10px',
+              }}
+            >
               <input
                 value={addressForm.unit}
                 onChange={(e) => updateAddressFormField('unit', e.target.value)}
@@ -1054,7 +1076,13 @@ export function FieldVetSession() {
                   fontSize: '14px',
                 }}
               />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+                  gap: '10px',
+                }}
+              >
                 <input
                   value={addressForm.city}
                   onChange={(e) => updateAddressFormField('city', e.target.value)}
@@ -1086,7 +1114,13 @@ export function FieldVetSession() {
                   }}
                 />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+                  gap: '10px',
+                }}
+              >
                 <input
                   value={addressForm.country}
                   onChange={(e) => updateAddressFormField('country', e.target.value)}

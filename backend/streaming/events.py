@@ -224,9 +224,13 @@ def payment_confirmed_event(
     The WebSocket bridge delivers this from its Redis pub/sub subscriber.
     Triggers Fatima to speak the confirmation aloud.
     """
+    default_message = (
+        f"Your payment of ₦{amount_ngn:,.2f} naira has been confirmed. "
+        f"Reference number {payment_reference}."
+    )
     return {
         "type":              T_PAYMENT_CONFIRMED,
         "payment_reference": payment_reference,
         "amount_ngn":        amount_ngn,
-        "message":           message or "Your payment has been confirmed.",
+        "message":           message or default_message,
     }
