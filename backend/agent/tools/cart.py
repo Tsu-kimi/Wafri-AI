@@ -276,15 +276,17 @@ async def manage_cart(
             # The anon_insert_own_cart / anon_update_own_cart RLS policies
             # require session_id = current_setting('app.session_id', true),
             # which rls_context has already set within this transaction.
+            farmer_name_val = (tool_context.state.get("farmer_name") or "").strip() or None
             await conn.execute(
                 """
                 INSERT INTO public.carts
-                    (phone, items_json, total_amount, session_id, status)
-                VALUES ($1, $2::jsonb, $3, $4, 'active')
+                    (phone, items_json, total_amount, session_id, status, farmer_name)
+                VALUES ($1, $2::jsonb, $3, $4, 'active', $5)
                 ON CONFLICT (phone) DO UPDATE
                     SET items_json   = EXCLUDED.items_json,
                         total_amount = EXCLUDED.total_amount,
                         session_id   = EXCLUDED.session_id,
+                        farmer_name  = COALESCE(EXCLUDED.farmer_name, public.carts.farmer_name),
                         -- Never overwrite payment_received or completed statuses;
                         -- those are set by webhooks and consumed by place_order.
                         -- pending_payment is reset to active because cart changed.
@@ -299,6 +301,7 @@ async def manage_cart(
                 _json.dumps(updated_items),
                 round(new_total, 2),
                 auth_session_id,
+                farmer_name_val,
             )
 
     except Exception as exc:

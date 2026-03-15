@@ -79,6 +79,8 @@ export interface UseWebSocketSessionOptions {
   onAudioFlush: () => void;
   /** Set to false to defer connecting (e.g. while IDs are initialising). */
   enabled?: boolean;
+  /** Return current lat/lon so LOCATION_DATA can be sent as first message on open. */
+  getLocationSnapshot?: () => { lat: number; lon: number; state?: string; lga?: string } | null;
 }
 
 // ── Reducer ───────────────────────────────────────────────────────────────────
@@ -241,6 +243,7 @@ export function useWebSocketSession({
   onAudioChunk,
   onAudioFlush,
   enabled = true,
+  getLocationSnapshot,
 }: UseWebSocketSessionOptions) {
   const [state, dispatch] = useReducer(sessionReducer, INITIAL_STATE);
 
@@ -289,8 +292,17 @@ export function useWebSocketSession({
       retryCountRef.current = 0;
       dispatch({ type: 'CONNECTED' });
 
-      // Restore the agent's location context automatically on reconnect so
-      // product filtering and session state remain consistent.
+      // Send LOCATION_DATA as first message when available so backend has coords
+      // before any tool (e.g. find_nearest_vet_clinic) runs.
+      const loc = getLocationSnapshot?.();
+      if (loc?.lat != null && loc?.lon != null) {
+        const payload: Record<string, unknown> = { type: 'LOCATION_DATA', lat: loc.lat, lon: loc.lon };
+        if (loc.state) payload.state = loc.state;
+        if (loc.lga) payload.lga = loc.lga;
+        ws.send(JSON.stringify(payload));
+      }
+
+      // Restore the agent's location context automatically on reconnect.
       if (wasReconnect && confirmedLocationRef.current) {
         ws.send(
           JSON.stringify({ type: 'TEXT', text: `My location is ${confirmedLocationRef.current}` }),

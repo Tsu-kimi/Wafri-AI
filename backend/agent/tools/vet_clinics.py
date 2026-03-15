@@ -194,18 +194,19 @@ async def find_nearest_vet_clinic(tool_context: ToolContext) -> dict[str, Any]:
 
     if lat is None or lon is None:
         logger.warning("find_nearest_vet_clinic: no GPS coordinates in session state")
+        # Return success so bridge does not send tool_error; agent can ask user to allow location and try again.
+        fallback_msg = (
+            "I don't have your location yet. Please allow location access in your browser and try again in a moment, "
+            f"or call the NAFDAC animal health helpline at {_NAFDAC_HELPLINE} for emergency veterinary support."
+        )
         return {
-            "status": "error",
+            "status": "success",
             "data": {
                 "clinics": [],
                 "radius_m": 0,
-                "fallback_message": (
-                    f"I couldn't locate you on the map. "
-                    f"Please call the NAFDAC animal health helpline at {_NAFDAC_HELPLINE} "
-                    f"for emergency veterinary support."
-                ),
+                "fallback_message": fallback_msg,
             },
-            "message": "No GPS coordinates available in session state.",
+            "message": fallback_msg,
         }
 
     try:

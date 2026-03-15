@@ -99,6 +99,7 @@ export function FieldVetSession() {
     sendText,
     resumeContext,
     sendLocationData,
+    locationSnapshotRef,
     retryConnection,
     clearError,
   } = useWebSocketContext();
@@ -112,6 +113,18 @@ export function FieldVetSession() {
     hasGPSError,
     isLoading: geoLoading,
   } = useGeolocation();
+
+  // Keep location snapshot ref updated so WebSocket onopen can send LOCATION_DATA as first message.
+  useEffect(() => {
+    if (locationSnapshotRef && lat !== null && lon !== null) {
+      locationSnapshotRef.current = {
+        lat,
+        lon,
+        state: detectedState ?? undefined,
+        lga: lga ?? undefined,
+      };
+    }
+  }, [lat, lon, detectedState, lga, locationSnapshotRef]);
 
   // Send GPS coordinates to the backend as soon as lat/lon resolve so
   // find_nearest_vet_clinic can be called immediately, even before geocoding.

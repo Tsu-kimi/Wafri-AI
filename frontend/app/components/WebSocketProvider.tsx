@@ -73,6 +73,8 @@ export interface WebSocketContextValue extends SessionState {
    * Call once after geolocation resolves; safe to call on every GPS update.
    */
   sendLocationData: (lat: number, lon: number, state?: string | null, lga?: string | null) => void;
+  /** Ref for FieldVetSession to set current location so LOCATION_DATA is sent on WS open. */
+  locationSnapshotRef: React.MutableRefObject<{ lat: number; lon: number; state?: string; lga?: string } | null>;
   /**
    * Resume the Web Audio API context after a user gesture.
    * Wire to the first meaningful tap/click on the page shell before audio arrives.
@@ -155,6 +157,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
    */
   const [ids, setIds] = useState<SessionIds | null>(null);
   const initialised = useRef(false);
+  const locationSnapshotRef = useRef<{ lat: number; lon: number; state?: string; lga?: string } | null>(null);
 
   useEffect(() => {
     if (initialised.current) return;
@@ -184,6 +187,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     onAudioChunk: playChunk,
     onAudioFlush: flush,
     enabled: ids !== null,
+    getLocationSnapshot: () => locationSnapshotRef.current,
   });
 
   const value = useMemo<WebSocketContextValue>(
@@ -196,11 +200,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       sendImage:       sendFrame,
       sendText,
       sendInterrupt,
-      // Expose flush directly so InterruptButton can stop audio client-side
-      // without waiting for the server AUDIO_FLUSH event.
       flushAudio:      flush,
       sendSessionContext,
       sendLocationData,
+      locationSnapshotRef,
       resumeContext,
       clearError,
       retryConnection,
@@ -215,6 +218,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       flush,
       sendSessionContext,
       sendLocationData,
+      locationSnapshotRef,
       resumeContext,
       clearError,
       retryConnection,

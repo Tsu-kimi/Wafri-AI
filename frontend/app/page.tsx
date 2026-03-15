@@ -25,15 +25,29 @@ export default function Home() {
 
   useEffect(() => {
     setMounted(true);
-    
+
     // Guard: require login before allowing access.
     const farmer = localStorage.getItem(FARMER_KEY);
     if (!farmer) {
       router.replace('/login');
       return;
     }
-    
-    const userIdentity = localStorage.getItem(USER_IDENTITY_KEY);
+
+    let userIdentity = localStorage.getItem(USER_IDENTITY_KEY);
+    // Returning users: derive identity from login (FARMER_KEY) so we skip AuthScreen.
+    if (!userIdentity) {
+      try {
+        const data = JSON.parse(farmer);
+        const phone = data.phone ?? data.phone_number ?? '';
+        if (phone) {
+          const identity = { phoneNumber: phone, name: data.name ?? '' };
+          localStorage.setItem(USER_IDENTITY_KEY, JSON.stringify(identity));
+          userIdentity = JSON.stringify(identity);
+        }
+      } catch {
+        // ignore
+      }
+    }
 
     if (!userIdentity) {
       setStep('auth');

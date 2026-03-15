@@ -152,6 +152,7 @@ async def get_order_history(
     )
 
     return {
+        "status": "success",
         "farmer": {
             "name": farmer_row.get("name"),
             "phone_number": farmer_row.get("phone_number"),

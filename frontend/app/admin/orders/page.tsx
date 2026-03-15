@@ -158,7 +158,11 @@ export default function OrdersPage() {
                       <td style={tdStyle}>{order.farmer_name ?? '—'}</td>
                       <td style={tdStyle}>{order.phone}</td>
                       <td style={tdStyle}>{order.last_known_state ?? '—'}</td>
-                      <td style={{ ...tdStyle, fontWeight: 700 }}>₦{Number(order.total_amount).toLocaleString()}</td>
+                      <td style={{ ...tdStyle, fontWeight: 700 }}>
+                        {order.total_amount != null && !Number.isNaN(Number(order.total_amount))
+                          ? `₦${Number(order.total_amount).toLocaleString()}`
+                          : '—'}
+                      </td>
                       <td style={tdStyle}><StatusBadge status={order.status} /></td>
                       <td style={{ ...tdStyle, color: 'var(--color-text-muted)' }}>
                         {new Date(order.created_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: '2-digit' })}

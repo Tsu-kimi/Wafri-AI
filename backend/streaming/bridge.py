@@ -300,12 +300,11 @@ async def run_bridge(
                                     if lga_val:
                                         session.state["farmer_lga"] = str(lga_val)
                                     state_val = payload.get("state")
-                                    # Always update state when provided — a second
-                                    # LOCATION_DATA carries the geocoded value which
-                                    # is more reliable than the initial GPS-only send.
                                     if state_val:
                                         session.state["farmer_state"] = str(state_val)
                                     _log("info", f"GPS stored: lat={lat}, lon={lon}, state={state_val!r}", "LOCATION_DATA")
+                                else:
+                                    _log("warning", "LOCATION_DATA received but no session found", "LOCATION_DATA_NO_SESSION")
                             except Exception as exc:
                                 _log("warning", f"Failed to store GPS in session: {exc}", "LOCATION_DATA_ERR")
 
