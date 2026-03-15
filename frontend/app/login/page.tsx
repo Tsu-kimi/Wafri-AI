@@ -14,6 +14,7 @@
 
 import React, { useState, useRef, useCallback, useEffect, KeyboardEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import { ArrowLeft2 } from 'iconsax-react';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -542,7 +543,39 @@ export default function LoginPage() {
               </div>
             )}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0 4px',
+                marginTop: '12px'
+              }}
+            >
+              <button
+                onClick={() => {
+                  setStep('phone');
+                  setPin('');
+                  setPinConfirm('');
+                  clearError();
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--color-text-muted)',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: 0,
+                }}
+              >
+                <ArrowLeft2 size={16} variant="Linear" color="currentColor" />
+                Change number
+              </button>
+
               {step === 'pin' && (
                 <button
                   onClick={() => {
@@ -556,30 +589,12 @@ export default function LoginPage() {
                     fontSize: '14px',
                     fontWeight: 600,
                     cursor: 'pointer',
+                    padding: 0,
                   }}
                 >
                   Forgot PIN?
                 </button>
               )}
-              <button
-                onClick={() => {
-                  setStep('phone');
-                  setPin('');
-                  setPinConfirm('');
-                  clearError();
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--color-text-muted)',
-                  fontSize: '14px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  marginTop: '8px',
-                }}
-              >
-                ← Use a different number
-              </button>
             </div>
           </div>
         )}
