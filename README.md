@@ -33,7 +33,7 @@ Using a standard smartphone browser, a farmer points their camera at a sick anim
 Built with **Next.js 15 (App Router)** and **TypeScript**, the frontend handles:
 - **Media Pipeline**: Captures camera frames (every 1.5s) and audio chunks for streaming.
 - **WebSocket Gateway**: Maintains a persistent connection to the backend for event-driven updates.
-- **Custom Components**: Includes `CameraView`, `ProductCardRow`, `CartBadge`, and `LocationBanner` for a rich, interactive mobile experience.
+- **Custom Components**: Includes `CameraView`, `ProductCardRow`, `CartBadge`, and `LocationBanner` for a rich, interactive mobile experience..
 
 ### Backend (`/backend`)
 A **FastAPI** application acting as the orchestrator:
@@ -110,4 +110,4 @@ A **FastAPI** application acting as the orchestrator:
 ---
 
 ## 🏆 Credits
-Created by the **Wafrivet Team** for the Gemini Live Agent Challenge.
+Created by the **Wafrivet Team** for the Gemini Live Agent Challenge.
