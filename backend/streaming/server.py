@@ -512,7 +512,9 @@ async def websocket_endpoint(
                     SELECT items_json, total_amount
                       FROM public.carts
                      WHERE phone = $1
-                       AND status NOT IN ('completed', 'cancelled')
+                       AND status IN ('active', 'pending_payment')
+                     ORDER BY updated_at DESC, created_at DESC
+                     LIMIT 1
                     """,
                     _phone_for_cart,
                 )

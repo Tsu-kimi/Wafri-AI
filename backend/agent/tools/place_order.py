@@ -193,6 +193,7 @@ async def place_order(
     order_ref: str = ""
     placed_at: str = ""
     sms_phone: str = phone
+    cart_id: str = ""
 
     try:
         async with rls_context(auth_session_id, phone=phone) as conn:
@@ -202,6 +203,9 @@ async def place_order(
                        delivery_address, order_reference
                 FROM public.carts
                 WHERE phone = $1
+                  AND status IN ('payment_received', 'ready_for_dispatch', 'dispatched', 'completed')
+                ORDER BY updated_at DESC, created_at DESC
+                LIMIT 1
                 """,
                 phone,
             )
@@ -217,7 +221,8 @@ async def place_order(
                 }
 
             cart_status = row["status"]
-            if cart_status != "payment_received":
+            cart_id = str(row["id"])
+            if cart_status not in ("payment_received", "ready_for_dispatch", "dispatched", "completed"):
                 return {
                     "status": "error",
                     "data":   {},
@@ -279,31 +284,31 @@ async def place_order(
                 await conn.execute(
                     """
                     UPDATE public.carts
-                    SET status           = 'pending_payment',
+                    SET status           = 'ready_for_dispatch',
                         order_reference  = $1,
                         placed_at        = $2,
                         delivery_address = $3,
                         updated_at       = NOW()
-                    WHERE phone = $4
+                    WHERE id = $4
                     """,
                     order_ref,
                     placed_at_dt,
                     resolved_address,
-                    phone,
+                    row["id"],
                 )
             else:
                 await conn.execute(
                     """
                     UPDATE public.carts
-                    SET status          = 'pending_payment',
+                    SET status          = 'ready_for_dispatch',
                         order_reference = $1,
                         placed_at       = $2,
                         updated_at      = NOW()
-                    WHERE phone = $3
+                    WHERE id = $3
                     """,
                     order_ref,
                     placed_at_dt,
-                    phone,
+                    row["id"],
                 )
 
     except Exception as exc:
@@ -321,8 +326,8 @@ async def place_order(
         try:
             async with rls_context(auth_session_id, phone=phone) as conn:
                 await conn.execute(
-                    "UPDATE public.carts SET sms_sent_at = NOW() WHERE phone = $1",
-                    phone,
+                    "UPDATE public.carts SET sms_sent_at = NOW() WHERE id = $1",
+                    cart_id,
                 )
         except Exception:
             pass  # Non-critical — order is already placed

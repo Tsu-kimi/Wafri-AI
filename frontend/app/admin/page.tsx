@@ -183,7 +183,11 @@ export default function AdminDashboard() {
                   <td style={tdStyle}>{order.farmer_name ?? '—'}</td>
                   <td style={tdStyle}>{order.phone}</td>
                   <td style={tdStyle}>{order.last_known_state ?? '—'}</td>
-                  <td style={tdStyle}>₦{Number(order.total_amount).toLocaleString()}</td>
+                  <td style={tdStyle}>
+                    {order.total_amount != null && !Number.isNaN(Number(order.total_amount))
+                      ? `₦${Number(order.total_amount).toLocaleString()}`
+                      : '—'}
+                  </td>
                   <td style={tdStyle}><StatusBadge status={order.status} /></td>
                   <td style={{ ...tdStyle, color: 'var(--color-text-muted)' }}>
                     {new Date(order.created_at).toLocaleDateString()}

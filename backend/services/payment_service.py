@@ -165,20 +165,23 @@ async def process_payment_confirmed(
             _publish_payment_event(session_id, ref, amount_ngn)
             return True
 
-        # Mark payment received and clear the active cart items.
-        # This keeps post-payment cart behaviour consistent with e-commerce
-        # expectations: purchased items should no longer remain in cart.
+        # Mark payment received but preserve the order contents. Historical
+        # rows power admin reporting and farmer order history, so items/total
+        # and the payment reference must remain intact after payment.
         await conn.execute(
             """
             UPDATE public.carts
                SET status     = 'payment_received',
-                   items_json  = '[]'::jsonb,
-                   total_amount = 0,
+                   total_amount = CASE
+                                    WHEN COALESCE(total_amount, 0) <= 0
+                                    THEN $1
+                                    ELSE total_amount
+                                  END,
                    checkout_url = NULL,
-                   payment_reference = NULL,
-                   updated_at = $1
-             WHERE id = $2
+                   updated_at = $2
+             WHERE id = $3
             """,
+            amount_ngn,
             now_utc,
             row["id"],
         )

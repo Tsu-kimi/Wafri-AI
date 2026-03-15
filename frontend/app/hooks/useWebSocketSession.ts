@@ -221,6 +221,10 @@ function sessionReducer(state: SessionState, action: ReducerAction): SessionStat
     case 'PAYMENT_CONFIRMED':
       return {
         ...state,
+        cartItems: [],
+        cartTotal: 0,
+        checkoutUrl: null,
+        payment_reference: null,
         paymentConfirmed: { payment_reference: action.payment_reference, amount_ngn: action.amount_ngn },
       };
 

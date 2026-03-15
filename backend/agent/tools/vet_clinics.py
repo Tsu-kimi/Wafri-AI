@@ -41,6 +41,7 @@ Environment variables required:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from typing import Any, Optional
@@ -53,6 +54,7 @@ logger = logging.getLogger("wafrivet.tools.vet_clinics")
 # Google Places API (New) Nearby Search endpoint.
 # Never use the legacy maps.googleapis.com endpoint.
 _PLACES_URL = "https://places.googleapis.com/v1/places:searchNearby"
+_GEOCODING_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 
 # FieldMask controls billing tier — only request what we display.
 # nationalPhoneNumber + currentOpeningHours → Enterprise SKU.
@@ -79,6 +81,10 @@ _MAX_RESULTS = 5
 # NAFDAC animal health helpline (Nigeria) — spoken when no clinics found.
 _NAFDAC_HELPLINE = "0800-162-3232"
 
+# Cache resolved coordinates for 2 hours to avoid repeated geocoding of the
+# same farmer location string.
+_GEOCODE_CACHE_TTL_SECONDS = 2 * 60 * 60
+
 
 def _api_key() -> str:
     key = os.environ.get("GOOGLE_MAPS_KEY", "").strip()
@@ -88,6 +94,85 @@ def _api_key() -> str:
             "Add it to Cloud Run via --set-secrets=GOOGLE_MAPS_KEY=GOOGLE_MAPS_KEY:latest."
         )
     return key
+
+
+def _geocode_cache_key(location_query: str) -> str:
+    normalized = " ".join(location_query.strip().lower().split())
+    return f"geocode_coords:{normalized}"
+
+
+async def _geocode_location(location_query: str) -> tuple[Optional[float], Optional[float]]:
+    """
+    Forward-geocode a Nigerian location string to coordinates.
+
+    Uses Redis for a 2-hour cache so repeated clinic lookups for the same
+    location do not keep hitting the Geocoding API.
+    """
+    if not location_query.strip():
+        return None, None
+
+    cache_key = _geocode_cache_key(location_query)
+    try:
+        from backend.services.redis_client import get_redis
+
+        redis = get_redis()
+        cached = await redis.get(cache_key)
+        if cached:
+            parsed = json.loads(cached)
+            return float(parsed["lat"]), float(parsed["lon"])
+    except Exception as exc:
+        logger.warning("geocode cache read failed: %s", exc)
+
+    params = {
+        "address": location_query,
+        "components": "country:NG",
+        "language": "en",
+        "key": _api_key(),
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(_GEOCODING_URL, params=params)
+        resp.raise_for_status()
+        payload = resp.json()
+    except httpx.HTTPStatusError as exc:
+        logger.warning(
+            "Geocoding API error: %s %s",
+            exc.response.status_code,
+            exc.response.text[:200],
+        )
+        return None, None
+    except Exception as exc:
+        logger.warning("Geocoding API unexpected error: %s", exc)
+        return None, None
+
+    if payload.get("status") != "OK" or not payload.get("results"):
+        logger.warning(
+            "Geocoding API returned status=%s for query=%r",
+            payload.get("status"),
+            location_query,
+        )
+        return None, None
+
+    location = (((payload.get("results") or [])[0] or {}).get("geometry") or {}).get("location") or {}
+    lat = location.get("lat")
+    lon = location.get("lng")
+    if lat is None or lon is None:
+        return None, None
+
+    try:
+        from backend.services.redis_client import get_redis
+
+        redis = get_redis()
+        await redis.setex(
+            cache_key,
+            _GEOCODE_CACHE_TTL_SECONDS,
+            json.dumps({"lat": float(lat), "lon": float(lon)}),
+        )
+    except Exception as exc:
+        logger.warning("geocode cache write failed: %s", exc)
+
+    return float(lat), float(lon)
 
 
 def _search_nearby(lat: float, lon: float, radius_m: float) -> list[dict[str, Any]]:
@@ -171,10 +256,11 @@ def _normalise_clinic(place: dict[str, Any]) -> dict[str, Any]:
 
 async def find_nearest_vet_clinic(tool_context: ToolContext) -> dict[str, Any]:
     """
-    ADK tool — find the nearest veterinary clinics for the farmer's GPS location.
+    ADK tool — find the nearest veterinary clinics for the farmer's location.
 
-    Reads farmer_lat and farmer_lon from session state (stored by the bridge
-    when the frontend sends a LOCATION_DATA WebSocket message).
+    Resolves coordinates from the farmer's location text (LGA + state, or state
+    alone) using the Google Geocoding API, caches that response for 2 hours in
+    Redis, and then runs a Places Nearby Search from the resolved coordinates.
 
     Returns:
         {
@@ -189,15 +275,13 @@ async def find_nearest_vet_clinic(tool_context: ToolContext) -> dict[str, Any]:
     """
     state = tool_context.state
 
-    lat = state.get("farmer_lat")
-    lon = state.get("farmer_lon")
+    farmer_state = str(state.get("farmer_state") or "").strip()
+    farmer_lga = str(state.get("farmer_lga") or "").strip()
 
-    if lat is None or lon is None:
-        logger.warning("find_nearest_vet_clinic: no GPS coordinates in session state")
-        # Return success so bridge does not send tool_error; agent can ask user to allow location and try again.
+    if not farmer_state:
         fallback_msg = (
-            "I don't have your location yet. Please allow location access in your browser and try again in a moment, "
-            f"or call the NAFDAC animal health helpline at {_NAFDAC_HELPLINE} for emergency veterinary support."
+            "I need your Nigerian state before I can find the nearest veterinary clinic. "
+            "Please tell me your state and I will check nearby clinics."
         )
         return {
             "status": "success",
@@ -209,22 +293,29 @@ async def find_nearest_vet_clinic(tool_context: ToolContext) -> dict[str, Any]:
             "message": fallback_msg,
         }
 
-    try:
-        lat_f = float(lat)
-        lon_f = float(lon)
-    except (TypeError, ValueError):
+    location_query = (
+        f"{farmer_lga}, {farmer_state}, Nigeria"
+        if farmer_lga
+        else f"{farmer_state}, Nigeria"
+    )
+    lat_f, lon_f = await _geocode_location(location_query)
+
+    if lat_f is None or lon_f is None:
         return {
-            "status": "error",
+            "status": "success",
             "data": {
                 "clinics": [],
                 "radius_m": 0,
                 "fallback_message": (
-                    f"I had trouble reading your location. "
-                    f"Please call the NAFDAC animal health helpline at {_NAFDAC_HELPLINE}."
+                    f"I could not resolve your location from {location_query}. "
+                    "Please confirm your state or local government area and try again."
                 ),
             },
-            "message": "Invalid GPS coordinates in session state.",
+            "message": "Could not resolve location to coordinates.",
         }
+
+    state["farmer_lat"] = lat_f
+    state["farmer_lon"] = lon_f
 
     clinics: list[dict[str, Any]] = []
     effective_radius = 0.0

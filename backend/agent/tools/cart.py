@@ -192,9 +192,16 @@ async def manage_cart(
         from backend.db.rls import rls_context
 
         async with rls_context(auth_session_id, phone=phone) as conn:
-            # ── Load current cart ──────────────────────────────────────────
+            # ── Load current open cart ─────────────────────────────────────
             row = await conn.fetchrow(
-                "SELECT id, items_json, total_amount FROM public.carts WHERE phone = $1",
+                """
+                SELECT id, items_json, total_amount, status
+                  FROM public.carts
+                 WHERE phone = $1
+                   AND status NOT IN ('payment_received', 'ready_for_dispatch', 'dispatched', 'completed', 'cancelled')
+                 ORDER BY updated_at DESC, created_at DESC
+                 LIMIT 1
+                """,
                 phone,
             )
             current_items: list[dict[str, Any]] = []
@@ -272,37 +279,44 @@ async def manage_cart(
                     f"Total: ₦{new_total:,.2f}."
                 )
 
-            # ── Persist cart (upsert on phone unique constraint) ───────────
-            # The anon_insert_own_cart / anon_update_own_cart RLS policies
-            # require session_id = current_setting('app.session_id', true),
-            # which rls_context has already set within this transaction.
+            # ── Persist cart ────────────────────────────────────────────────
+            # Historical paid orders must remain immutable, so we update the
+            # current open cart row when present and create a fresh active row
+            # otherwise.
             farmer_name_val = (tool_context.state.get("farmer_name") or "").strip() or None
-            await conn.execute(
-                """
-                INSERT INTO public.carts
-                    (phone, items_json, total_amount, session_id, status, farmer_name)
-                VALUES ($1, $2::jsonb, $3, $4, 'active', $5)
-                ON CONFLICT (phone) DO UPDATE
-                    SET items_json   = EXCLUDED.items_json,
-                        total_amount = EXCLUDED.total_amount,
-                        session_id   = EXCLUDED.session_id,
-                        farmer_name  = COALESCE(EXCLUDED.farmer_name, public.carts.farmer_name),
-                        -- Never overwrite payment_received or completed statuses;
-                        -- those are set by webhooks and consumed by place_order.
-                        -- pending_payment is reset to active because cart changed.
-                        status       = CASE
-                                         WHEN public.carts.status IN ('payment_received', 'completed')
-                                         THEN public.carts.status
-                                         ELSE 'active'
-                                       END,
-                        updated_at   = NOW()
-                """,
-                phone,
-                _json.dumps(updated_items),
-                round(new_total, 2),
-                auth_session_id,
-                farmer_name_val,
-            )
+            if row:
+                await conn.execute(
+                    """
+                    UPDATE public.carts
+                       SET items_json         = $1::jsonb,
+                           total_amount       = $2,
+                           session_id         = $3,
+                           farmer_name        = COALESCE($4, farmer_name),
+                           status             = 'active',
+                           checkout_url       = NULL,
+                           payment_reference  = NULL,
+                           updated_at         = NOW()
+                     WHERE id = $5
+                    """,
+                    _json.dumps(updated_items),
+                    round(new_total, 2),
+                    auth_session_id,
+                    farmer_name_val,
+                    row["id"],
+                )
+            else:
+                await conn.execute(
+                    """
+                    INSERT INTO public.carts
+                        (phone, items_json, total_amount, session_id, status, farmer_name)
+                    VALUES ($1, $2::jsonb, $3, $4, 'active', $5)
+                    """,
+                    phone,
+                    _json.dumps(updated_items),
+                    round(new_total, 2),
+                    auth_session_id,
+                    farmer_name_val,
+                )
 
     except Exception as exc:
         logger.error("manage_cart: unexpected error: %s", exc)

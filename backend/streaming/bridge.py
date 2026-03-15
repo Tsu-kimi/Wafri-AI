@@ -302,6 +302,46 @@ async def run_bridge(
                                     state_val = payload.get("state")
                                     if state_val:
                                         session.state["farmer_state"] = str(state_val)
+                                    phone_val = str(session.state.get("farmer_phone") or "").strip()
+                                    if not phone_val and _auth_sid:
+                                        try:
+                                            from backend.services.farmer_service import _resolve_phone_from_session
+
+                                            phone_val = (await _resolve_phone_from_session(_auth_sid)) or ""
+                                            if phone_val:
+                                                session.state["farmer_phone"] = phone_val
+                                        except Exception:
+                                            phone_val = ""
+
+                                    if phone_val and _auth_sid:
+                                        try:
+                                            from backend.db.rls import rls_context as _rls
+
+                                            async with _rls(_auth_sid, phone=phone_val) as _conn:
+                                                await _conn.execute(
+                                                    """
+                                                    UPDATE public.carts
+                                                       SET last_known_lat   = $1,
+                                                           last_known_lng   = $2,
+                                                           last_known_state = $3,
+                                                           last_known_lga   = $4,
+                                                           updated_at       = NOW()
+                                                     WHERE id = (
+                                                           SELECT id
+                                                             FROM public.carts
+                                                            WHERE phone = $5
+                                                            ORDER BY updated_at DESC, created_at DESC
+                                                            LIMIT 1
+                                                     )
+                                                    """,
+                                                    float(lat),
+                                                    float(lon),
+                                                    str(state_val) if state_val else None,
+                                                    str(lga_val) if lga_val else None,
+                                                    phone_val,
+                                                )
+                                        except Exception as db_exc:
+                                            _log("warning", f"Failed to persist GPS to DB: {db_exc}", "LOCATION_DATA_DB_ERR")
                                     _log("info", f"GPS stored: lat={lat}, lon={lon}, state={state_val!r}", "LOCATION_DATA")
                                 else:
                                     _log("warning", "LOCATION_DATA received but no session found", "LOCATION_DATA_NO_SESSION")

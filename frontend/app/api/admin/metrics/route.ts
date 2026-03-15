@@ -27,7 +27,10 @@ export async function GET(req: NextRequest) {
     adminSupabase.from('farmers').select('*', { count: 'exact', head: true }).not('phone_number', 'is', null),
 
     // Total unique carts/orders
-    adminSupabase.from('carts').select('*', { count: 'exact', head: true }),
+    adminSupabase
+      .from('carts')
+      .select('*', { count: 'exact', head: true })
+      .neq('status', 'active'),
 
     // Total revenue from paid orders
     adminSupabase
@@ -39,13 +42,15 @@ export async function GET(req: NextRequest) {
     adminSupabase
       .from('carts')
       .select('id, phone, farmer_name, total_amount, status, placed_at, created_at, last_known_state')
+      .neq('status', 'active')
       .order('created_at', { ascending: false })
       .limit(10),
 
     // Orders grouped by status
     adminSupabase
       .from('carts')
-      .select('status'),
+      .select('status')
+      .neq('status', 'active'),
   ]);
 
   const totalProducts = productsResult.count ?? 0;

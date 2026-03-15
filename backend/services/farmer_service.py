@@ -378,7 +378,14 @@ async def _sync_cart_delivery_address(
 ) -> None:
     """Keep carts.delivery_address in sync with the selected structured address."""
     row = await conn.fetchrow(
-        "SELECT id FROM public.carts WHERE phone = $1",
+        """
+        SELECT id
+          FROM public.carts
+         WHERE phone = $1
+           AND status NOT IN ('payment_received', 'ready_for_dispatch', 'dispatched', 'completed', 'cancelled')
+         ORDER BY updated_at DESC, created_at DESC
+         LIMIT 1
+        """,
         phone,
     )
 
@@ -389,11 +396,11 @@ async def _sync_cart_delivery_address(
                SET delivery_address = $1,
                    session_id       = $2,
                    updated_at       = NOW()
-             WHERE phone = $3
+             WHERE id = $3
             """,
             formatted_address,
             session_id,
-            phone,
+            row["id"],
         )
         return
 
@@ -779,7 +786,14 @@ async def set_delivery_address(session_id: str, address: str) -> str:
 
     async with rls_context(session_id, phone=phone) as conn:
         row = await conn.fetchrow(
-            "SELECT id FROM public.carts WHERE phone = $1",
+            """
+            SELECT id
+              FROM public.carts
+             WHERE phone = $1
+               AND status NOT IN ('payment_received', 'ready_for_dispatch', 'dispatched', 'completed', 'cancelled')
+             ORDER BY updated_at DESC, created_at DESC
+             LIMIT 1
+            """,
             phone,
         )
 
@@ -790,11 +804,11 @@ async def set_delivery_address(session_id: str, address: str) -> str:
                    SET delivery_address = $1,
                        session_id       = $2,
                        updated_at       = NOW()
-                 WHERE phone = $3
+                 WHERE id = $3
                 """,
                 normalized,
                 session_id,
-                phone,
+                row["id"],
             )
         else:
             await conn.execute(

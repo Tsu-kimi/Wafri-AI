@@ -126,8 +126,8 @@ async def update_cart(
             row = await conn.fetchrow(
                 "SELECT id, items_json, total_amount, status "
                 "FROM public.carts "
-                "WHERE phone = $1 AND COALESCE(status, 'active') = 'active' "
-                "ORDER BY updated_at DESC "
+                "WHERE phone = $1 AND status NOT IN ('payment_received', 'ready_for_dispatch', 'dispatched', 'completed', 'cancelled') "
+                "ORDER BY updated_at DESC, created_at DESC "
                 "LIMIT 1",
                 phone,
             )
@@ -182,12 +182,15 @@ async def update_cart(
                 UPDATE public.carts
                 SET items_json   = $1::jsonb,
                     total_amount = $2,
+                    checkout_url = NULL,
+                    payment_reference = NULL,
+                    status       = 'active',
                     updated_at   = NOW()
-                WHERE phone = $3
+                WHERE id = $3
                 """,
                 _json.dumps(updated_items),
                 round(new_total, 2),
-                phone,
+                row["id"],
             )
 
     except Exception as exc:

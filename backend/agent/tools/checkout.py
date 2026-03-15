@@ -227,9 +227,12 @@ async def generate_checkout_link(
             else:
                 legacy_row = await conn.fetchrow(
                     """
-                    SELECT delivery_address
+                    SELECT id, delivery_address
                       FROM public.carts
                      WHERE phone = $1
+                       AND status NOT IN ('payment_received', 'ready_for_dispatch', 'dispatched', 'completed', 'cancelled')
+                     ORDER BY updated_at DESC, created_at DESC
+                     LIMIT 1
                     """,
                     phone,
                 )
@@ -238,9 +241,12 @@ async def generate_checkout_link(
             # Read cart from DB as the canonical source of truth for total and items.
             cart_row = await conn.fetchrow(
                 """
-                SELECT items_json, total_amount
+                SELECT id, items_json, total_amount
                   FROM public.carts
                  WHERE phone = $1
+                   AND status NOT IN ('payment_received', 'ready_for_dispatch', 'dispatched', 'completed', 'cancelled')
+                 ORDER BY updated_at DESC, created_at DESC
+                 LIMIT 1
                 """,
                 phone,
             )
@@ -325,23 +331,34 @@ async def generate_checkout_link(
     # farmer can still complete payment.
     try:
         async with rls_context(auth_session_id, phone=phone) as conn:
-            await conn.execute(
-                """
-                INSERT INTO public.carts
-                    (phone, checkout_url, payment_reference, status, session_id)
-                VALUES ($1, $2, $3, 'pending_payment', $4)
-                ON CONFLICT (phone) DO UPDATE
-                    SET checkout_url      = EXCLUDED.checkout_url,
-                        payment_reference = EXCLUDED.payment_reference,
-                        status            = 'pending_payment',
-                        session_id        = EXCLUDED.session_id,
-                        updated_at        = NOW()
-                """,
-                phone,
-                checkout_url,
-                reference,
-                auth_session_id,
-            )
+            if cart_row:
+                await conn.execute(
+                    """
+                    UPDATE public.carts
+                       SET checkout_url      = $1,
+                           payment_reference = $2,
+                           status            = 'pending_payment',
+                           session_id        = $3,
+                           updated_at        = NOW()
+                     WHERE id = $4
+                    """,
+                    checkout_url,
+                    reference,
+                    auth_session_id,
+                    cart_row["id"],
+                )
+            else:
+                await conn.execute(
+                    """
+                    INSERT INTO public.carts
+                        (phone, checkout_url, payment_reference, status, session_id)
+                    VALUES ($1, $2, $3, 'pending_payment', $4)
+                    """,
+                    phone,
+                    checkout_url,
+                    reference,
+                    auth_session_id,
+                )
     except Exception as db_exc:
         logger.error(
             "generate_checkout_link: failed to persist checkout_url to carts: %s",
