@@ -4,7 +4,7 @@
 import React, { useState } from 'react';
 import Image from 'next/image';
 import { Microphone2, Box, Notification, ArrowLeft2 } from 'iconsax-react';
-import wafrivetLogo from '../assets/Green_Black___White_Modern_Creative_Agency_Typography_Logo-removebg-preview.png';
+import wafrivetLogo from '../assets/w.svg';
 
 interface OnboardingProps {
   onComplete: () => void;

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import logo from '@/app/assets/Green_Black___White_Modern_Creative_Agency_Typography_Logo-removebg-preview.png';
+import logo from '@/app/assets/w.svg';
 
 export default function AdminLoginPage() {
   const router = useRouter();

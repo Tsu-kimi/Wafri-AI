@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import { Element3, Box, Bag2, Profile2User, SidebarLeft, SidebarRight } from 'iconsax-react';
-import logo from '@/app/assets/Green_Black___White_Modern_Creative_Agency_Typography_Logo-removebg-preview.png';
+import logo from '@/app/assets/w.svg';
 import { AdminCtx, type AdminUser } from './admin-context';
 
 // ── Sidebar navigation items ────────────────────────────────────────────────
