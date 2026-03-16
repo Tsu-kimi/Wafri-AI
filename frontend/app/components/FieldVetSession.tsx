@@ -21,7 +21,7 @@
  *   LOCATION_CONFIRMED   → confirmedLocation → LocationBanner pill
  *   binary frames        → onAudioChunk → audioPlayer (in WebSocketProvider)
  *   AUDIO_FLUSH          → onAudioFlush → flush (in WebSocketProvider)
- *   unhandled events     → console.warn in useWebSocketSession switch default
+ *   unhandled events     → silently handled in useWebSocketSession switch default
  */
 
 import React, {
@@ -131,15 +131,9 @@ export function FieldVetSession() {
   useEffect(() => {
     if (lat !== null && lon !== null && !gpsSentRef.current) {
       if (connectionState !== 'connected') {
-        console.log(
-          `[FieldVetSession] GPS resolved (lat=${lat}, lon=${lon}) but WS is "${connectionState}" — will send once connected`,
-        );
         return;
       }
       gpsSentRef.current = true;
-      console.log(
-        `[FieldVetSession] Sending LOCATION_DATA (GPS only) — lat=${lat}, lon=${lon}`,
-      );
       // Send coords immediately (state may still be null — geocoding in progress)
       sendLocationData(lat, lon, null, null);
     }
@@ -152,9 +146,6 @@ export function FieldVetSession() {
   useEffect(() => {
     if (detectedState && lat !== null && lon !== null && !stateSentRef.current && connectionState === 'connected') {
       stateSentRef.current = true;
-      console.log(
-        `[FieldVetSession] Sending LOCATION_DATA (geocoded) — state="${detectedState}", lga="${lga}"`,
-      );
       sendLocationData(lat, lon, detectedState, lga);
     }
   }, [detectedState, connectionState, lat, lon, lga, sendLocationData]);
@@ -395,7 +386,6 @@ export function FieldVetSession() {
     // layer and narrated by the agent — they must never trigger a UI toast.
     const isToolError = lastError.toLowerCase().startsWith('tool error in ');
     if (isToolError) {
-      console.warn('[FieldVetSession] tool error suppressed from UI:', lastError);
       clearError();
       return;
     }

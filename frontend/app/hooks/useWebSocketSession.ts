@@ -472,22 +472,14 @@ export function useWebSocketSession({
 
         case 'TOOL_ERROR':
           // Tool errors are intentionally suppressed from the UI so the voice
-          // experience remains seamless.  The agent narrates any meaningful
-          // failure aloud; raw tool diagnostics belong in the browser console.
-          console.warn(`[tool:${raw.tool_name}] error (UI suppressed):`, raw.error);
+          // experience remains seamless. The agent narrates any meaningful
+          // failure aloud.
           break;
 
-        case 'TOOL_CALL_DEBUG': {
-          const prefix = `[tool:${raw.tool_name}] ${raw.status.toUpperCase()}`;
-          if (raw.status === 'success') {
-            console.info(prefix, raw.message, raw.details ?? {});
-          } else if (raw.status === 'error') {
-            console.warn(prefix, raw.message, raw.details ?? {});
-          } else {
-            console.error(prefix, raw.message, raw.details ?? {});
-          }
+        case 'TOOL_CALL_DEBUG':
+          // Debug-only diagnostics from the backend bridge are not surfaced
+          // in the browser.
           break;
-        }
 
         case 'ERROR':
           dispatch({ type: 'MODEL_ERROR', code: raw.code, message: raw.message });
@@ -509,21 +501,10 @@ export function useWebSocketSession({
           });
           break;
 
-        default: {
+        default:
           // SESSION_EXPIRED and other internal lifecycle events are handled
           // silently — the auto-reconnect in onclose takes care of recovery.
-          const unhandled = raw as { type: string };
-          if (unhandled.type === 'SESSION_EXPIRED') {
-            console.info('[useWebSocketSession] session expired — auto-reconnect in progress');
-          } else {
-            console.warn(
-              '[useWebSocketSession] Unhandled server event type:',
-              unhandled.type,
-              raw,
-            );
-          }
           break;
-        }
       }
     };
 

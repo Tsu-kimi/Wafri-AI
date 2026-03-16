@@ -165,8 +165,8 @@ def tool_call_debug_event(
     details: Optional[dict[str, Any]] = None,
 ) -> dict:
     """
-    Emits lightweight tool execution diagnostics to the browser console.
-    Intended for QA/debug builds and does not replace server-side logs.
+    Emits lightweight tool execution diagnostics intended for server-side logs
+    and monitoring. Does not replace structured backend logging.
 
     Args:
         tool_name: Name of the invoked ADK tool.

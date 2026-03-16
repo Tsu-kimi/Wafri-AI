@@ -196,7 +196,6 @@ class SessionMiddleware:
             if _is_rate_limited(ip):
                 log.warning(
                     "session_mint_rate_limited",
-                    ip=ip,
                     max_per_minute=MAX_MINTS_PER_IP_PER_MINUTE,
                 )
                 # Still assign a temporary in-memory session_id for this request

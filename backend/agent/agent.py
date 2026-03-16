@@ -57,6 +57,7 @@ if not logger.handlers:
 logger.propagate = True
 
 _REDACT_KEYS = {
+  # Secrets / credentials
   "pin",
   "new_pin",
   "otp",
@@ -66,6 +67,28 @@ _REDACT_KEYS = {
   "api_key",
   "paystack_secret_key",
   "termii_api_key",
+  # Personal or user-derived fields
+  "phone",
+  "phone_number",
+  "delivery_phone",
+  "address",
+  "unit",
+  "street",
+  "city",
+  "state",
+  "country",
+  "postal_code",
+  "lat",
+  "lon",
+  "lga",
+  "location",
+  "symptoms_text",
+  "visual_observations",
+  "query",
+  "farmer_name",
+  "farmer_phone",
+  "order_reference",
+  "payment_reference",
 }
 
 

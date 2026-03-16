@@ -81,25 +81,20 @@ async function geocodeViaNominatim(
   url.searchParams.set('zoom', '10');
   url.searchParams.set('addressdetails', '1');
 
-  console.log(`[/api/geocode] Nominatim fallback for lat=${lat}, lon=${lon}`);
-
   try {
     const resp = await fetch(url.toString(), {
       headers: { 'User-Agent': NOMINATIM_UA, Accept: 'application/json' },
       signal: AbortSignal.timeout(8_000),
     });
     if (!resp.ok) {
-      console.warn(`[/api/geocode] Nominatim HTTP ${resp.status}`);
       return null;
     }
     const data = await resp.json() as NominatimResponse;
     if (data.error || !data.address) {
-      console.warn('[/api/geocode] Nominatim error or no address:', data.error);
       return null;
     }
     const state = data.address.state ?? null;
     if (!state) {
-      console.warn('[/api/geocode] Nominatim response has no state field');
       return null;
     }
     const lga = data.address.state_district
@@ -108,10 +103,8 @@ async function geocodeViaNominatim(
       ?? data.address.town
       ?? null;
     const formattedAddress = data.display_name ?? state;
-    console.log(`[/api/geocode] Nominatim resolved → state="${state}", lga="${lga}"`);
     return { state, lga, formattedAddress };
   } catch (err) {
-    console.error('[/api/geocode] Nominatim fetch error:', err);
     return null;
   }
 }
@@ -145,7 +138,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const apiKey = process.env.GOOGLE_MAPS_KEY;
   if (!apiKey) {
     // Key not configured in Vercel env vars — fall back to Nominatim immediately.
-    console.warn('[/api/geocode] GOOGLE_MAPS_KEY not set — using Nominatim fallback');
     const result = await geocodeViaNominatim(lat, lon);
     if (result) return NextResponse.json(result);
     return NextResponse.json({ error: 'Geocoding service unavailable' }, { status: 503 });
@@ -158,8 +150,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   url.searchParams.set('language', 'en');
   // result_type filter improves relevance for administrative lookups.
   // Omit it here — we scan all results for administrative_area_level_1.
-
-  console.log(`[/api/geocode] Reverse geocoding lat=${lat}, lon=${lon}`);
 
   let geoData: GeocodingResponse;
   try {
@@ -176,7 +166,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
     geoData = await resp.json() as GeocodingResponse;
   } catch (err) {
-    console.error('[/api/geocode] Fetch error:', err);
     return NextResponse.json(
       { error: 'Failed to reach geocoding service' },
       { status: 500 },
@@ -193,16 +182,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         { status: 404 },
       );
     case 'OVER_QUERY_LIMIT':
-      console.warn('[/api/geocode] Geocoding quota exceeded');
       return NextResponse.json(
         { error: 'Geocoding quota exceeded — try again shortly' },
         { status: 429 },
       );
     case 'REQUEST_DENIED':
-      console.error(
-        '[/api/geocode] REQUEST_DENIED:', geoData.error_message,
-        '— key restriction or billing issue. Falling back to Nominatim.',
-      );
       {
         const fallback = await geocodeViaNominatim(lat, lon);
         if (fallback) return NextResponse.json(fallback);
@@ -212,7 +196,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         { status: 403 },
       );
     default:
-      console.error('[/api/geocode] Unexpected status:', geoData.status, geoData.error_message);
       return NextResponse.json(
         { error: 'Geocoding failed' },
         { status: 500 },
@@ -241,13 +224,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   if (!state) {
-    console.warn(`[/api/geocode] No administrative_area_level_1 found for lat=${lat}, lon=${lon}. Google status=${geoData.status}, results=${geoData.results.length}`);
     return NextResponse.json(
       { error: 'Could not determine state from these coordinates' },
       { status: 404 },
     );
   }
-
-  console.log(`[/api/geocode] Resolved lat=${lat}, lon=${lon} → state="${state}", lga="${lga}", address="${formattedAddress}"`);
   return NextResponse.json({ state, lga: lga ?? null, formattedAddress });
 }

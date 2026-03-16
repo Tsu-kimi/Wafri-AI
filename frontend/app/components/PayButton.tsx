@@ -40,15 +40,10 @@ export function PayButton({ cartTotal, paymentReference, onPaymentInitiated }: P
 
   const handlePay = async () => {
     if (!paystackKey) {
-      console.warn(
-        '[PayButton] NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY is not set. ' +
-          'Add it to .env.local (or Vercel project settings) and rebuild.',
-      );
       return;
     }
 
     if (!paymentReference) {
-      console.warn('[PayButton] Missing payment reference from CHECKOUT_LINK event.');
       return;
     }
 
@@ -75,13 +70,11 @@ export function PayButton({ cartTotal, paymentReference, onPaymentInitiated }: P
           // User dismissed popup without paying.
           setIsLoading(false);
         },
-        onError: (err: { message: string }) => {
-          console.error('[PayButton] Paystack error:', err.message);
+        onError: () => {
           setIsLoading(false);
         },
       });
     } catch (err: unknown) {
-      console.error('[PayButton] Failed to load Paystack:', err);
       setIsLoading(false);
     }
   };

@@ -220,9 +220,9 @@ export interface ClinicsFoundEvent {
 
 /**
  * An ADK tool returned a non-success status.
- * INTENTIONALLY suppressed from the UI — handled as a browser console.warn
- * only so the seamless voice experience is never interrupted by a popup.
- * The agent (Fatima) narrates any meaningful failure to the user via audio.
+ * INTENTIONALLY suppressed from the UI so the seamless voice experience is
+ * never interrupted by a popup. The agent (Fatima) narrates any meaningful
+ * failure to the user via audio.
  */
 export interface ToolErrorEvent {
   type: 'TOOL_ERROR';
@@ -231,8 +231,8 @@ export interface ToolErrorEvent {
 }
 
 /**
- * Browser-console diagnostics for ADK tool outcomes emitted by the bridge.
- * This mirrors server-side logging with lightweight, sanitized metadata.
+ * Diagnostics for ADK tool outcomes emitted by the bridge.
+ * Mirrors server-side logging with lightweight, sanitized metadata.
  */
 export interface ToolCallDebugEvent {
   type: 'TOOL_CALL_DEBUG';

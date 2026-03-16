@@ -149,7 +149,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // ── API key — server-side only ────────────────────────────────────────────
   const apiKey = process.env.GOOGLE_MAPS_KEY;
   if (!apiKey) {
-    console.error('[/api/places/vets] GOOGLE_MAPS_KEY environment variable is not set');
     return NextResponse.json(
       { error: 'Places service is not configured' },
       { status: 500 },
@@ -166,8 +165,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         clinics = places.map(normalisePlaceToClinic);
         break;
       }
-    } catch (err) {
-      console.error(`[/api/places/vets] Error at radius ${radiusM}m:`, err);
+    } catch {
       return NextResponse.json(
         { error: 'Failed to reach Places service' },
         { status: 500 },

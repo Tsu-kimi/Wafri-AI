@@ -126,10 +126,8 @@ def _summarize_tool_data(data: dict[str, Any]) -> dict[str, Any]:
         summary["items_count"] = len(data["items"])
     if "cart_total" in data:
         summary["cart_total"] = data.get("cart_total")
-    if "state" in data:
-        summary["state"] = data.get("state")
-    if "payment_reference" in data:
-        summary["payment_reference"] = data.get("payment_reference")
+    # Intentionally avoid echoing location, payment_reference, or other
+    # user-specific fields here; only coarse, non-identifying metadata.
     if "checkout_url" in data:
         summary["has_checkout_url"] = bool(data.get("checkout_url"))
     return summary
@@ -342,7 +340,7 @@ async def run_bridge(
                                                 )
                                         except Exception as db_exc:
                                             _log("warning", f"Failed to persist GPS to DB: {db_exc}", "LOCATION_DATA_DB_ERR")
-                                    _log("info", f"GPS stored: lat={lat}, lon={lon}, state={state_val!r}", "LOCATION_DATA")
+                                    _log("info", "GPS coordinates stored for active session", "LOCATION_DATA")
                                 else:
                                     _log("warning", "LOCATION_DATA received but no session found", "LOCATION_DATA_NO_SESSION")
                             except Exception as exc:
@@ -592,7 +590,7 @@ async def _redis_payment_subscriber(
                             amount_ngn=amount_ngn,
                         )
                     )
-                    log_fn("info", f"PAYMENT_CONFIRMED delivered: {ref!r}", "PAYMENT_CONFIRMED")
+                    log_fn("info", "PAYMENT_CONFIRMED delivered", "PAYMENT_CONFIRMED")
                 except Exception as send_exc:
                     log_fn(
                         "warning",
@@ -722,8 +720,6 @@ async def _route_tool_response(
                 {
                     "event": "tool_call",
                     "tool": "recommend_products",
-                    "disease": disease_category,
-                    "location": location,
                     "products_returned": len(products),
                     "session_id": session_id,
                 }
@@ -753,7 +749,7 @@ async def _route_tool_response(
         elif tool_name == "update_location":
             state_val = data.get("state", "")
             await websocket.send_json(location_confirmed_event(state=state_val, message=message))
-            log_fn("info", f"LOCATION_CONFIRMED: {state_val!r}", "LOCATION_CONFIRMED")
+            log_fn("info", "LOCATION_CONFIRMED event sent", "LOCATION_CONFIRMED")
 
         elif tool_name == "search_disease_matches":
             # Agent narrates results; no separate UI event.
@@ -796,8 +792,6 @@ async def _route_tool_response(
                 {
                     "event": "tool_call",
                     "tool": tool_name,
-                    "query": data.get("query", ""),
-                    "state": data.get("state", ""),
                     "products_returned": len(products),
                     "session_id": session_id,
                 }
@@ -827,8 +821,6 @@ async def _route_tool_response(
                 {
                     "event": "tool_call",
                     "tool": "place_order",
-                    "order_reference": data.get("order_reference", ""),
-                    "total": data.get("total", 0.0),
                     "sms_sent": data.get("sms_sent", False),
                     "session_id": session_id,
                 }
@@ -853,7 +845,7 @@ async def _route_tool_response(
                     "session_id": session_id,
                 }
             )
-            log_fn("info", f"ORDER_HISTORY fetched ({total} orders)", "ORDER_HISTORY")
+            log_fn("info", "ORDER_HISTORY fetched", "ORDER_HISTORY")
 
         else:
             log_fn("warning", f"unrecognised tool: {tool_name!r}", "UNKNOWN_TOOL")
