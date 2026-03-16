@@ -268,15 +268,21 @@ export function useWebSocketSession({
 
   /**
    * Tracks consecutive AI turns that contained no product/cart event.
-   * Reset to 0 when PRODUCTS_RECOMMENDED or CART_UPDATED arrives.
-   * When it reaches 2, the product strip is auto-dismissed.
+   * Only increments when the CURRENT turn had no product event.
+   * Reset to 0 on PRODUCTS_RECOMMENDED or CART_UPDATED.
+   * When it reaches 3, the product strip is auto-dismissed.
    */
   const turnsWithoutProductsRef = useRef(0);
+  /** True if PRODUCTS_RECOMMENDED or CART_UPDATED arrived in the current turn. */
+  const productsInCurrentTurnRef = useRef(false);
+
   /**
    * Tracks consecutive AI turns that contained no clinics event.
-   * Reset to 0 when CLINICS_FOUND arrives. Dismissed after 2 quiet turns.
+   * Reset to 0 when CLINICS_FOUND arrives. Dismissed after 3 quiet turns.
    */
   const turnsWithoutClinicsRef = useRef(0);
+  /** True if CLINICS_FOUND arrived in the current turn. */
+  const clinicsInCurrentTurnRef = useRef(false);
 
   /**
    * Mirror of state.confirmedLocation kept in a ref so the reconnect
@@ -366,19 +372,31 @@ export function useWebSocketSession({
         case 'TURN_COMPLETE':
           dispatch({ type: 'AGENT_SPEAKING', value: false });
           dispatch({ type: 'CLEAR_SCANNING' });
-          // Auto-dismiss product strip: if 2 consecutive turns had no product
-          // or cart event, the topic has moved on — clear the cards.
-          turnsWithoutProductsRef.current += 1;
-          if (turnsWithoutProductsRef.current >= 2) {
-            dispatch({ type: 'CLEAR_PRODUCTS' });
+          // Auto-dismiss product strip.
+          // If products/cart arrived in this exact turn, don't count it — the
+          // ADK runner can fire multiple TURN_COMPLETE events per tool-call
+          // cycle, and we must not penalise the turn that showed the cards.
+          if (productsInCurrentTurnRef.current) {
             turnsWithoutProductsRef.current = 0;
+          } else {
+            turnsWithoutProductsRef.current += 1;
+            if (turnsWithoutProductsRef.current >= 3) {
+              dispatch({ type: 'CLEAR_PRODUCTS' });
+              turnsWithoutProductsRef.current = 0;
+            }
           }
+          productsInCurrentTurnRef.current = false;
           // Auto-dismiss clinic strip similarly.
-          turnsWithoutClinicsRef.current += 1;
-          if (turnsWithoutClinicsRef.current >= 2) {
-            dispatch({ type: 'CLEAR_CLINICS' });
+          if (clinicsInCurrentTurnRef.current) {
             turnsWithoutClinicsRef.current = 0;
+          } else {
+            turnsWithoutClinicsRef.current += 1;
+            if (turnsWithoutClinicsRef.current >= 3) {
+              dispatch({ type: 'CLEAR_CLINICS' });
+              turnsWithoutClinicsRef.current = 0;
+            }
           }
+          clinicsInCurrentTurnRef.current = false;
           break;
 
         case 'TRANSCRIPTION':
@@ -386,6 +404,7 @@ export function useWebSocketSession({
           break;
 
         case 'PRODUCTS_RECOMMENDED':
+          productsInCurrentTurnRef.current = true;
           turnsWithoutProductsRef.current = 0;
           dispatch({ type: 'PRODUCTS_RECOMMENDED', products: raw.products });
           break;
@@ -407,6 +426,7 @@ export function useWebSocketSession({
 
         case 'CART_UPDATED':
           // Cart activity means the user is still in the product/commerce flow.
+          productsInCurrentTurnRef.current = true;
           turnsWithoutProductsRef.current = 0;
           dispatch({
             type: 'CART_UPDATED',
@@ -428,6 +448,7 @@ export function useWebSocketSession({
           break;
 
         case 'CLINICS_FOUND':
+          clinicsInCurrentTurnRef.current = true;
           turnsWithoutClinicsRef.current = 0;
           dispatch({
             type: 'CLINICS_FOUND',
