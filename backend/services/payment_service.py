@@ -37,6 +37,9 @@ import json
 import logging
 import os
 import re
+import secrets
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -46,6 +49,80 @@ from backend.services.redis_client import get_redis
 log = logging.getLogger("wafrivet.services.payment_service")
 
 _PAYMENT_REFERENCE_RE = re.compile(r"^[A-Za-z0-9_\-]{4,64}$")
+_TERMII_URL = "https://api.ng.termii.com/api/sms/send"
+
+
+def _generate_order_ref() -> str:
+    token = secrets.token_hex(4).upper()
+    return f"WV-{token[:6]}"
+
+
+def _send_termii_order_confirmed_sms(
+    *,
+    phone_e164: str,
+    customer_name: Optional[str],
+    order_ref: str,
+    items: list[dict[str, Any]],
+    total: float,
+) -> bool:
+    api_key = os.environ.get("TERMII_API_KEY", "").strip()
+    sender_id = os.environ.get("TERMII_SENDER_ID", "N-Alert").strip() or "N-Alert"
+    if not api_key:
+        log.warning("termii_key_missing_for_payment_sms", extra={"order_ref": order_ref})
+        return False
+
+    # Format item summary: "Qx ProductName" when single item, else "<N> items"
+    if len(items) == 1:
+        first = items[0] if items else {}
+        qty = int(first.get("quantity") or 1)
+        product_name = str(first.get("product_name") or "Product")
+        item_line = f"{qty}x {product_name[:30]}"
+    else:
+        item_line = f"{len(items)} items"
+
+    display_name = (customer_name or "").strip() or "Customer"
+    sms_body = (
+        f"Dear {display_name},  "
+        f"WafriVet Order Confirmed! "
+        f"Ref: {order_ref} "
+        f"Items: {item_line} "
+        f"Total: NGN {float(total):,.2f} "
+        "We will contact you to arrange delivery. "
+        "Thank you powered by Kuro Amai Studios"
+    )
+
+    termii_phone = str(phone_e164).lstrip("+")
+    payload = json.dumps(
+        {
+            "api_key": api_key,
+            "to": termii_phone,
+            "from": sender_id,
+            "sms": sms_body,
+            "type": "plain",
+            "channel": "dnd",
+        }
+    ).encode("utf-8")
+
+    req = urllib.request.Request(
+        _TERMII_URL,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+            code = resp.getcode()
+            if 200 <= code < 300:
+                log.info("payment_sms_dispatched", extra={"order_ref": order_ref, "status": code})
+                return True
+            log.warning("payment_sms_non_2xx", extra={"order_ref": order_ref, "status": code})
+            return False
+    except urllib.error.HTTPError as exc:
+        log.error("payment_sms_http_error", extra={"order_ref": order_ref, "status": exc.code})
+        return False
+    except Exception as exc:  # noqa: BLE001
+        log.error("payment_sms_dispatch_failed", extra={"order_ref": order_ref, "error": str(exc)})
+        return False
 
 
 def verify_webhook_signature(
@@ -141,7 +218,8 @@ async def process_payment_confirmed(
         # (pool connects with the service-role DSN set in SUPABASE_DB_URL).
         row = await conn.fetchrow(
             """
-            SELECT id, session_id, phone, status
+            SELECT id, session_id, phone, status,
+                   items_json, total_amount, order_reference, sms_sent_at
               FROM public.carts
              WHERE payment_reference = $1
             """,
@@ -155,6 +233,9 @@ async def process_payment_confirmed(
         cart_id = str(row["id"])
         session_id: Optional[str] = row["session_id"]
         current_status: str = row["status"]
+        cart_phone: str = str(row["phone"] or "").strip()
+        order_ref: str = str(row["order_reference"] or "").strip()
+        sms_sent_at = row["sms_sent_at"]
 
         # Idempotency: skip if already marked paid.
         if current_status in ("payment_received", "ready_for_dispatch", "dispatched", "completed"):
@@ -164,6 +245,9 @@ async def process_payment_confirmed(
             )
             _publish_payment_event(session_id, ref, amount_ngn)
             return True
+
+        if not order_ref:
+            order_ref = _generate_order_ref()
 
         # Mark payment received but preserve the order contents. Historical
         # rows power admin reporting and farmer order history, so items/total
@@ -177,6 +261,7 @@ async def process_payment_confirmed(
                                     THEN $1
                                     ELSE total_amount
                                   END,
+                   order_reference = COALESCE(order_reference, $4),
                    checkout_url = NULL,
                    updated_at = $2
              WHERE id = $3
@@ -184,7 +269,51 @@ async def process_payment_confirmed(
             amount_ngn,
             now_utc,
             row["id"],
+            order_ref,
         )
+
+        # Send Termii SMS on payment confirmation (once).
+        if cart_phone and sms_sent_at is None:
+            customer_name: Optional[str] = None
+            try:
+                farmer_row = await conn.fetchrow(
+                    "SELECT name FROM public.farmers WHERE phone_number = $1 LIMIT 1",
+                    cart_phone,
+                )
+                if farmer_row and farmer_row["name"]:
+                    customer_name = str(farmer_row["name"])
+            except Exception:
+                customer_name = None
+
+            import json as _json
+
+            items_val = row["items_json"]
+            items: list[dict[str, Any]] = []
+            try:
+                if isinstance(items_val, str):
+                    parsed = _json.loads(items_val)
+                    items = parsed if isinstance(parsed, list) else []
+                elif isinstance(items_val, list):
+                    items = list(items_val)
+            except Exception:
+                items = []
+
+            total_val = float(row["total_amount"] or 0) or float(amount_ngn or 0)
+            sent = _send_termii_order_confirmed_sms(
+                phone_e164=cart_phone,
+                customer_name=customer_name,
+                order_ref=order_ref,
+                items=items,
+                total=total_val,
+            )
+            if sent:
+                try:
+                    await conn.execute(
+                        "UPDATE public.carts SET sms_sent_at = NOW() WHERE id = $1",
+                        row["id"],
+                    )
+                except Exception:
+                    pass
 
     log.info(
         "cart_payment_confirmed",
