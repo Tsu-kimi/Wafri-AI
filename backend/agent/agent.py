@@ -533,32 +533,41 @@ _reflect_and_retry = _WafrivetRetryPlugin(
 
 async def _safe_tool_callback(tool, tool_args: dict, tool_context: ToolContext):
     """
-    Wraps tool execution in a try/except.  Returning None lets ADK proceed
-    normally; returning a dict bypasses the tool and gives the agent that dict
-    as the result, which it reads and speaks aloud via the user_message field.
+    Pre-flight guard executed by ADK before every tool invocation.
+
+    Returning None tells ADK to proceed with the tool normally.
+    Returning a dict short-circuits the tool and passes that dict to Fatima
+    as the tool result — she reads it and speaks the user_message aloud.
+
+    Note: this callback runs BEFORE the tool, so it cannot catch exceptions
+    thrown inside the tool itself.  Runtime safety for tool bodies is handled
+    by _WafrivetRetryPlugin (max_retries=2) and the _tool_with_logging wrappers.
+    This callback is the right place for input validation or access-control
+    checks that should block a tool call before it starts.
     """
-    try:
-        # Returning None means "proceed with normal tool execution"
-        return None
-    except Exception as exc:  # noqa: BLE001
-        session_id = getattr(tool_context, "session_id", "unknown")
-        tool_name = getattr(tool, "name", str(tool))
-        logger.error(
-            {
-                "event": "tool_error",
-                "tool": tool_name,
-                "error": str(exc),
-                "session_id": session_id,
-            }
+    session_id = getattr(tool_context, "session_id", "unknown")
+    tool_name = getattr(tool, "name", str(tool))
+
+    # Guard: if the ADK session state is missing auth_session_id the RLS-scoped
+    # DB queries inside every tool will fail.  Short-circuit with a graceful
+    # error message rather than letting the tool throw an unhandled exception.
+    state = getattr(tool_context, "state", {}) or {}
+    if not state.get("auth_session_id"):
+        logger.warning(
+            "tool_blocked_no_auth tool=%s session_id=%s",
+            tool_name,
+            session_id,
         )
         return {
             "error": True,
             "status": "error",
             "user_message": (
-                "I had trouble checking that right now. "
-                "Please give me a moment and try again."
+                "I need a moment to verify your session. "
+                "Please try again in a few seconds."
             ),
         }
+
+    return None
 
 
 # ---------------------------------------------------------------------------

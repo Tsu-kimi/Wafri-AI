@@ -29,6 +29,7 @@ from typing import Any, List, Optional
 # ---------------------------------------------------------------------------
 
 T_AUDIO_FLUSH          = "AUDIO_FLUSH"
+T_TRANSCRIPTION        = "TRANSCRIPTION"
 T_TURN_COMPLETE        = "TURN_COMPLETE"
 T_PRODUCTS_RECOMMENDED = "PRODUCTS_RECOMMENDED"
 T_CART_UPDATED         = "CART_UPDATED"
@@ -50,6 +51,21 @@ T_PAYMENT_CONFIRMED    = "PAYMENT_CONFIRMED"
 
 def audio_flush_event() -> dict:
     return {"type": T_AUDIO_FLUSH}
+
+
+def transcription_event(text: str, author: str = "Fatima", is_final: bool = True) -> dict:
+    """
+    Args:
+        text     — the transcribed speech fragment
+        author   — "user" for farmer mic input; agent name (default "Fatima") for AI output
+        is_final — True when the fragment is a complete utterance, False for streaming partials
+    """
+    return {
+        "type":     T_TRANSCRIPTION,
+        "text":     text,
+        "author":   author,
+        "is_final": is_final,
+    }
 
 
 def turn_complete_event() -> dict:

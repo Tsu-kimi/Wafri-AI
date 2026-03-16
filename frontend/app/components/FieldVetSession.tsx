@@ -385,36 +385,39 @@ export function FieldVetSession() {
   }, [API_BASE, editingAddressId, loadAddresses]);
 
   useEffect(() => {
-    if (lastError) {
-      setToastError(lastError);
-      setIsToastVisible(true);
-      setNotifications((prev) => [
-        ...prev,
-        { id: Date.now(), message: lastError, time: new Date(), level: 'error' },
-      ]);
+    if (!lastError) return;
 
-      if (lastError.toLowerCase().includes('delivery address')) {
-        setShowAddressModal(true);
-        void loadAddresses();
-      }
-
-      // Step 1: Trigger the CSS exit animation at 4.5 seconds
-      const hideTimer = setTimeout(() => {
-        setIsToastVisible(false);
-      }, 4500);
-
-      // Step 2: Completely remove the text from DOM and clear context at 5 seconds
-      const clearTimer = setTimeout(() => {
-        setToastError(null);
-        clearError();
-      }, 5000);
-
-      return () => {
-        clearTimeout(hideTimer);
-        clearTimeout(clearTimer);
-      };
+    // Only surface genuine user-facing errors (connection loss, model safety
+    // blocks, quota exceeded).  Tool-level errors are suppressed at the WS
+    // layer and narrated by the agent — they must never trigger a UI toast.
+    const isToolError = lastError.toLowerCase().startsWith('tool error in ');
+    if (isToolError) {
+      console.warn('[FieldVetSession] tool error suppressed from UI:', lastError);
+      clearError();
+      return;
     }
-  }, [lastError, clearError, loadAddresses]);
+
+    setToastError(lastError);
+    setIsToastVisible(true);
+    setNotifications((prev) => [
+      ...prev,
+      { id: Date.now(), message: lastError, time: new Date(), level: 'error' },
+    ]);
+
+    const hideTimer = setTimeout(() => {
+      setIsToastVisible(false);
+    }, 4500);
+
+    const clearTimer = setTimeout(() => {
+      setToastError(null);
+      clearError();
+    }, 5000);
+
+    return () => {
+      clearTimeout(hideTimer);
+      clearTimeout(clearTimer);
+    };
+  }, [lastError, clearError]);
 
   useEffect(() => {
     if (!paymentConfirmed) return;

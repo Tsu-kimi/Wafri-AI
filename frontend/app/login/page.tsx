@@ -602,6 +602,31 @@ export default function LoginPage() {
         {/* ── Step 3: OTP ────────────────────────────────────────────────── */}
         {(step === 'otp_request' || step === 'otp_verify') && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', textAlign: 'center' }}>
+
+            {/* ── Maintenance banner ─────────────────────────────────────── */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                padding: '12px 14px',
+                borderRadius: '12px',
+                background: 'color-mix(in srgb, #f59e0b 12%, white)',
+                border: '1px solid color-mix(in srgb, #f59e0b 40%, transparent)',
+                textAlign: 'left',
+              }}
+            >
+              <span style={{ fontSize: '18px', lineHeight: 1, flexShrink: 0 }}>🔧</span>
+              <div>
+                <p style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#92400e' }}>
+                  OTP service under maintenance
+                </p>
+                <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#b45309', lineHeight: 1.5 }}>
+                  The SMS channel has not yet been activated. PIN reset via OTP is temporarily unavailable.
+                  You will still receive your order confirmation and payment details by SMS after checkout.
+                </p>
+              </div>
+            </div>
             <p style={{ fontSize: '15px', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
               {step === 'otp_request'
                 ? `We'll send a one-time code to ${maskPhone(phoneE164)} to reset your PIN.`

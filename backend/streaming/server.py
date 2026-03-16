@@ -112,12 +112,13 @@ _APP_NAME = "wafrivet"
 
 
 def _build_live_agent() -> LlmAgent:
-    """Clone root_agent with the Gemini Live model."""
+    """Clone root_agent with the Gemini Live model, preserving all callbacks."""
     return LlmAgent(
         name=root_agent.name,
         model=_LIVE_MODEL,
         instruction=root_agent.instruction,
         tools=list(root_agent.tools),
+        before_tool_callback=root_agent.before_tool_callback,
     )
 
 

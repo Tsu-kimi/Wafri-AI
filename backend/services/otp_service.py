@@ -54,7 +54,7 @@ def _termii_channels() -> list[str]:
         channels = [c.strip() for c in configured.split(",") if c.strip()]
         if channels:
             return channels
-    return ["dnd", "generic"]
+    return ["generic"]
 
 
 def _otp_key(phone: str) -> str:

@@ -218,7 +218,12 @@ export interface ClinicsFoundEvent {
   message: string;
 }
 
-/** An ADK tool returned a non-success status; agent will narrate the error. */
+/**
+ * An ADK tool returned a non-success status.
+ * INTENTIONALLY suppressed from the UI — handled as a browser console.warn
+ * only so the seamless voice experience is never interrupted by a popup.
+ * The agent (Fatima) narrates any meaningful failure to the user via audio.
+ */
 export interface ToolErrorEvent {
   type: 'TOOL_ERROR';
   tool_name: string;

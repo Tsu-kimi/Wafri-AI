@@ -259,12 +259,15 @@ export function useWebSocketSession({
 }: UseWebSocketSessionOptions) {
   const [state, dispatch] = useReducer(sessionReducer, INITIAL_STATE);
 
-  const wsRef           = useRef<WebSocket | null>(null);
-  const retryCountRef   = useRef(0);
-  const retryTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mountedRef      = useRef(true);
-  const connectRef      = useRef<(() => void) | null>(null);
-  const manualRetryRef  = useRef(false);
+  const wsRef               = useRef<WebSocket | null>(null);
+  const retryCountRef       = useRef(0);
+  const retryTimerRef       = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef          = useRef(true);
+  const connectRef          = useRef<(() => void) | null>(null);
+  const manualRetryRef      = useRef(false);
+  // Tracks the last-dispatched isAgentSpeaking value to avoid re-rendering
+  // the entire context tree on every incoming audio chunk (~25 dispatches/sec).
+  const isAgentSpeakingRef  = useRef(false);
 
   /**
    * Tracks consecutive AI turns that contained no product/cart event.
@@ -347,7 +350,11 @@ export function useWebSocketSession({
       // Route directly to the audio player; never pass to the reducer.
       if (event.data instanceof ArrayBuffer) {
         onAudioChunkRef.current(event.data);
-        dispatch({ type: 'AGENT_SPEAKING', value: true });
+        // Only dispatch when value changes — prevents ~25 re-renders/sec during speech.
+        if (!isAgentSpeakingRef.current) {
+          isAgentSpeakingRef.current = true;
+          dispatch({ type: 'AGENT_SPEAKING', value: true });
+        }
         return;
       }
 
@@ -366,10 +373,12 @@ export function useWebSocketSession({
       switch (raw.type) {
         case 'AUDIO_FLUSH':
           onAudioFlushRef.current();
+          isAgentSpeakingRef.current = false;
           dispatch({ type: 'AGENT_SPEAKING', value: false });
           break;
 
         case 'TURN_COMPLETE':
+          isAgentSpeakingRef.current = false;
           dispatch({ type: 'AGENT_SPEAKING', value: false });
           dispatch({ type: 'CLEAR_SCANNING' });
           // Auto-dismiss product strip.
@@ -458,11 +467,10 @@ export function useWebSocketSession({
           break;
 
         case 'TOOL_ERROR':
-          dispatch({
-            type: 'TOOL_ERROR',
-            tool_name: raw.tool_name,
-            error: raw.error,
-          });
+          // Tool errors are intentionally suppressed from the UI so the voice
+          // experience remains seamless.  The agent narrates any meaningful
+          // failure aloud; raw tool diagnostics belong in the browser console.
+          console.warn(`[tool:${raw.tool_name}] error (UI suppressed):`, raw.error);
           break;
 
         case 'TOOL_CALL_DEBUG': {
@@ -485,6 +493,7 @@ export function useWebSocketSession({
         // the follow-up AUDIO_FLUSH envelope arrives.
         case 'interrupted':
           onAudioFlushRef.current();
+          isAgentSpeakingRef.current = false;
           dispatch({ type: 'AGENT_SPEAKING', value: false });
           break;
 
@@ -497,13 +506,18 @@ export function useWebSocketSession({
           break;
 
         default: {
-          // Narrow raw to an object with a `type` field for the warning.
+          // SESSION_EXPIRED and other internal lifecycle events are handled
+          // silently — the auto-reconnect in onclose takes care of recovery.
           const unhandled = raw as { type: string };
-          console.warn(
-            '[useWebSocketSession] Unhandled server event type:',
-            unhandled.type,
-            raw,
-          );
+          if (unhandled.type === 'SESSION_EXPIRED') {
+            console.info('[useWebSocketSession] session expired — auto-reconnect in progress');
+          } else {
+            console.warn(
+              '[useWebSocketSession] Unhandled server event type:',
+              unhandled.type,
+              raw,
+            );
+          }
           break;
         }
       }

@@ -433,10 +433,15 @@ async def run_bridge(
                 if is_interrupted:
                     continue
 
-                # ── Priority 4: Audio inline_data ────────────────────────
+                # ── Priority 4: Content parts (audio only) ───────────────────
                 if event.content and event.content.parts:
+                    content_role = (getattr(event.content, "role", None) or "model").lower()
                     for part in event.content.parts:
                         if part.inline_data and part.inline_data.data:
+                            # Only forward model audio output to the browser.
+                            # User-role inline_data would be an echo of mic input — discard it.
+                            if content_role != "model":
+                                continue
                             # Mark Fatima as speaking so the barge-in handler
                             # knows there is live audio in flight.
                             session_state["is_ai_speaking"] = True
@@ -480,7 +485,7 @@ async def run_bridge(
     up_task   = asyncio.create_task(upstream_task(), name=f"upstream-{session_id}")
     down_task = asyncio.create_task(downstream_task(), name=f"downstream-{session_id}")
     sub_task  = asyncio.create_task(
-        _redis_payment_subscriber(websocket, _auth_sid, _log),
+        _redis_payment_subscriber(websocket, _auth_sid, _log, live_request_queue),
         name=f"redis-sub-{session_id}",
     )
 
@@ -508,10 +513,13 @@ async def _redis_payment_subscriber(
     websocket: WebSocket,
     auth_session_id: str,
     log_fn: Any,
+    live_request_queue: LiveRequestQueue,
 ) -> None:
     """
     Subscribe to Redis channel session:{auth_session_id} and forward any
     PAYMENT_CONFIRMED message to the connected WebSocket as a typed event.
+    Also injects a spoken cue into the live session so Fatima congratulates
+    the farmer verbally — closing the commerce loop in audio, not just UI.
 
     This task runs for the full lifetime of the WebSocket connection alongside
     upstream_task and downstream_task. It is cancelled when either of those
@@ -577,6 +585,36 @@ async def _redis_payment_subscriber(
                         "PAYMENT_DELIVER_ERR",
                     )
 
+                # Inject a verbal cue into the live conversation so Fatima
+                # speaks the payment confirmation aloud — the farmer hears
+                # success in audio, not just reads a silent UI toast.
+                try:
+                    amount_fmt = f"{amount_ngn:,.0f}"
+                    live_request_queue.send_content(
+                        types.Content(
+                            role="user",
+                            parts=[
+                                types.Part(
+                                    text=(
+                                        f"[SYSTEM] Payment confirmed. "
+                                        f"Amount: ₦{amount_fmt} NGN. "
+                                        f"Reference: {ref}. "
+                                        "Please congratulate the farmer warmly, "
+                                        "confirm their order is now being processed, "
+                                        "and tell them to expect an SMS confirmation."
+                                    )
+                                )
+                            ],
+                        )
+                    )
+                    log_fn("info", "PAYMENT_CONFIRMED injected into live conversation", "PAYMENT_INJECT")
+                except Exception as inject_exc:
+                    log_fn(
+                        "warning",
+                        f"failed to inject PAYMENT_CONFIRMED into live queue: {inject_exc}",
+                        "PAYMENT_INJECT_ERR",
+                    )
+
     except asyncio.CancelledError:
         pass
     except Exception as exc:
@@ -623,13 +661,12 @@ async def _route_tool_response(
     message: str = resp_dict.get("message", "")
 
     if status != "success":
-        # Intermediate errors (e.g. missing address fields that the retry plugin
-        # will resolve automatically) are logged server-side only — broadcasting
-        # them to the frontend would generate confusing console warnings for the
-        # user without any actionable information.
+        # Tool errors are never pushed to the frontend as UI events — doing so
+        # would pop up a visible "Tool error" toast that breaks the seamless
+        # voice experience.  All error detail is logged server-side and the
+        # agent (Fatima) narrates any relevant failure to the user via audio.
         is_intermediate = bool(data.get("_intermediate"))
         if not is_intermediate:
-            await websocket.send_json(tool_error_event(tool_name=tool_name, error=message))
             await websocket.send_json(
                 tool_call_debug_event(
                     tool_name=tool_name,
@@ -807,7 +844,8 @@ async def _route_tool_response(
             log_fn("warning", f"unrecognised tool: {tool_name!r}", "UNKNOWN_TOOL")
 
     except Exception as exc:
-        await websocket.send_json(tool_error_event(tool_name=tool_name, error=str(exc)))
+        # Routing exceptions are logged server-side and sent to the browser
+        # console only via TOOL_CALL_DEBUG — no visible UI toast is generated.
         await websocket.send_json(
             tool_call_debug_event(
                 tool_name=tool_name,
