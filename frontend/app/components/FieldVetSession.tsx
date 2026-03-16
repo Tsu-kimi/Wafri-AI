@@ -190,6 +190,7 @@ export function FieldVetSession() {
 
   // ── Delivery address modal state ───────────────────────────────────────────
   const [showAddressModal, setShowAddressModal] = useState(false);
+  const [addressScreen, setAddressScreen] = useState<'list' | 'form'>('list');
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [addressForm, setAddressForm] = useState<AddressForm>(EMPTY_ADDRESS_FORM);
@@ -245,6 +246,7 @@ export function FieldVetSession() {
     setAddressForm(EMPTY_ADDRESS_FORM);
     setSetDefaultOnSave(addresses.length === 0);
     setAddressError(null);
+    setAddressScreen('form');
   }, [addresses.length]);
 
   const startEditAddress = useCallback((addr: SavedAddress) => {
@@ -260,6 +262,7 @@ export function FieldVetSession() {
     });
     setSetDefaultOnSave(addr.is_default);
     setAddressError(null);
+    setAddressScreen('form');
   }, []);
 
   const validateAddressForm = useCallback((): string | null => {
@@ -313,6 +316,7 @@ export function FieldVetSession() {
       setEditingAddressId(null);
       setAddressForm(EMPTY_ADDRESS_FORM);
       setSetDefaultOnSave(false);
+      setAddressScreen('list');
       setNotifications((prev) => [
         ...prev,
         {
@@ -656,6 +660,7 @@ export function FieldVetSession() {
         <ActionMenu
           onShowNotifications={() => setShowErrorLog(true)}
           onManageAddress={() => {
+            setAddressScreen('list');
             setShowAddressModal(true);
             void loadAddresses();
           }}
@@ -855,7 +860,7 @@ export function FieldVetSession() {
         </div>
       )}
 
-      {/* ── Delivery address modal ───────────────────────────────────────── */}
+      {/* ── Delivery address modal (2-screen: list → form) ─────────────── */}
       {showAddressModal && (
         <div
           role="dialog"
@@ -880,355 +885,417 @@ export function FieldVetSession() {
               background: 'var(--color-surface)',
               border: '1px solid var(--color-border)',
               borderRadius: '16px',
-              padding: '18px',
               display: 'flex',
               flexDirection: 'column',
-              gap: '12px',
+              overflow: 'hidden',
+              maxHeight: '85svh',
             }}
           >
-            <h3 style={{ margin: 0, color: 'var(--color-text)', fontFamily: 'var(--font-fraunces)', fontSize: '20px' }}>
-              Delivery Addresses
-            </h3>
-            <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '13px', lineHeight: 1.5 }}>
-              Save one or more addresses, then select your delivery address for checkout.
-            </p>
-
-            <div
-              style={{
-                maxHeight: '220px',
-                overflowY: 'auto',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px',
-                paddingRight: '4px',
-              }}
-            >
-              {addressLoading ? (
-                <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '13px' }}>Loading addresses...</p>
-              ) : addresses.length === 0 ? (
-                <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '13px' }}>
-                  No saved addresses yet. Add one below.
-                </p>
-              ) : (
-                [...addresses]
-                  .sort((a, b) => {
-                    if (a.id === selectedAddressId) return -1;
-                    if (b.id === selectedAddressId) return 1;
-                    return 0;
-                  })
-                  .map((addr) => {
-                  const isSelected = addr.id === selectedAddressId;
-                  return (
-                    <div
-                      key={addr.id}
+            {/* ── Screen 1: Address list ─────────────────────────────── */}
+            {addressScreen === 'list' && (
+              <>
+                {/* Header */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '16px 18px',
+                  borderBottom: '1px solid var(--color-border)',
+                  flexShrink: 0,
+                }}>
+                  <h3 style={{ margin: 0, color: 'var(--color-text)', fontFamily: 'var(--font-fraunces)', fontSize: '19px' }}>
+                    Delivery Addresses
+                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button
+                      onClick={startCreateAddress}
+                      disabled={addressSaving}
+                      aria-label="Add new address"
                       style={{
-                        border: `2px solid ${isSelected ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                        borderRadius: '12px',
-                        padding: '10px 12px',
-                        background: isSelected
-                          ? 'color-mix(in srgb, var(--color-primary) 10%, var(--color-surface))'
-                          : 'var(--color-bg)',
-                        transition: 'border-color 0.15s, background 0.15s',
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '10px',
+                        border: '1px solid var(--color-border)',
+                        background: 'var(--color-primary)',
+                        color: 'var(--color-white)',
+                        fontSize: '22px',
+                        lineHeight: 1,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 400,
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                        <p style={{ margin: 0, color: 'var(--color-text)', fontSize: '13px', fontWeight: 700, flex: 1 }}>
-                          {addr.formatted}
-                        </p>
-                        {isSelected && (
-                          <span style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            background: 'var(--color-primary)',
-                            color: 'var(--color-white)',
-                            borderRadius: '20px',
-                            padding: '2px 8px',
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            whiteSpace: 'nowrap',
-                            flexShrink: 0,
-                          }}>
-                            ✓ Delivery
-                          </span>
-                        )}
-                      </div>
-                      <p style={{ margin: '4px 0 0', color: 'var(--color-text-muted)', fontSize: '12px' }}>
-                        Phone: {addr.delivery_phone}
+                      +
+                    </button>
+                    <button
+                      onClick={() => { setShowAddressModal(false); setAddressError(null); }}
+                      aria-label="Close"
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '10px',
+                        border: '1px solid var(--color-border)',
+                        background: 'transparent',
+                        color: 'var(--color-text-muted)',
+                        fontSize: '18px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                {/* Address list body */}
+                <div style={{
+                  overflowY: 'auto',
+                  flex: 1,
+                  padding: '14px 18px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                }}>
+                  {addressLoading ? (
+                    <p style={{ margin: '24px 0', color: 'var(--color-text-muted)', fontSize: '14px', textAlign: 'center' }}>
+                      Loading addresses…
+                    </p>
+                  ) : addresses.length === 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px 0', gap: '10px' }}>
+                      <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '15px', textAlign: 'center' }}>
+                        No saved addresses yet.
                       </p>
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
-                        {!isSelected && (
-                          <button
-                            onClick={() => void selectAddress(addr.id)}
-                            disabled={addressSaving}
+                      <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '13px', textAlign: 'center' }}>
+                        Tap <strong>+</strong> above to add your first delivery address.
+                      </p>
+                    </div>
+                  ) : (
+                    [...addresses]
+                      .sort((a, b) => {
+                        if (a.id === selectedAddressId) return -1;
+                        if (b.id === selectedAddressId) return 1;
+                        return 0;
+                      })
+                      .map((addr) => {
+                        const isSelected = addr.id === selectedAddressId;
+                        return (
+                          <div
+                            key={addr.id}
                             style={{
-                              minHeight: '32px',
-                              borderRadius: '8px',
-                              border: 'none',
-                              background: 'var(--color-primary)',
-                              color: 'var(--color-white)',
-                              padding: '0 12px',
-                              fontSize: '12px',
-                              fontWeight: 700,
-                              cursor: 'pointer',
+                              border: `2px solid ${isSelected ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                              borderRadius: '12px',
+                              padding: '12px 14px',
+                              background: isSelected
+                                ? 'color-mix(in srgb, var(--color-primary) 10%, var(--color-surface))'
+                                : 'var(--color-bg)',
+                              transition: 'border-color 0.15s, background 0.15s',
                             }}
                           >
-                            Use for delivery
-                          </button>
-                        )}
-                        <button
-                          onClick={() => startEditAddress(addr)}
-                          disabled={addressSaving}
-                          style={{
-                            minHeight: '32px',
-                            borderRadius: '8px',
-                            border: '1px solid var(--color-border)',
-                            background: 'transparent',
-                            color: 'var(--color-text)',
-                            padding: '0 10px',
-                            fontSize: '12px',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => void deleteAddress(addr.id)}
-                          disabled={addressSaving}
-                          style={{
-                            minHeight: '32px',
-                            borderRadius: '8px',
-                            border: '1px solid color-mix(in srgb, var(--color-error) 45%, var(--color-border))',
-                            background: 'transparent',
-                            color: 'var(--color-error)',
-                            padding: '0 10px',
-                            fontSize: '12px',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: '8px',
-                flexWrap: 'wrap',
-              }}
-            >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, minWidth: 0 }}>
-                <h4 style={{ margin: 0, color: 'var(--color-text)', fontSize: '15px' }}>
-                  {editingAddressId ? 'Edit delivery address' : 'Add a new delivery address'}
-                </h4>
-                <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '12px' }}>
-                  We&apos;ll use this as the drop-off location for your order.
-                </p>
-              </div>
-              {addresses.length > 0 && (
-                <button
-                  onClick={startCreateAddress}
-                  disabled={addressSaving}
-                  style={{
-                    minHeight: '32px',
-                    borderRadius: '999px',
-                    border: '1px solid var(--color-border)',
-                    background: 'var(--color-surface-2)',
-                    color: 'var(--color-text)',
-                    padding: '0 14px',
-                    fontSize: '12px',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  + New address
-                </button>
-              )}
-            </div>
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr',
-                gap: '10px',
-              }}
-            >
-              <input
-                value={addressForm.unit}
-                onChange={(e) => updateAddressFormField('unit', e.target.value)}
-                placeholder="Unit"
-                disabled={addressLoading || addressSaving}
-                style={{
-                  minHeight: '44px',
-                  background: 'var(--color-bg)',
-                  color: 'var(--color-text)',
-                  border: '1px solid var(--color-border)',
-                  borderRadius: '10px',
-                  padding: '0 12px',
-                  fontSize: '14px',
-                }}
-              />
-              <input
-                value={addressForm.street}
-                onChange={(e) => updateAddressFormField('street', e.target.value)}
-                placeholder="Street"
-                disabled={addressLoading || addressSaving}
-                style={{
-                  minHeight: '44px',
-                  background: 'var(--color-bg)',
-                  color: 'var(--color-text)',
-                  border: '1px solid var(--color-border)',
-                  borderRadius: '10px',
-                  padding: '0 12px',
-                  fontSize: '14px',
-                }}
-              />
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
-                  gap: '10px',
-                }}
-              >
-                <input
-                  value={addressForm.city}
-                  onChange={(e) => updateAddressFormField('city', e.target.value)}
-                  placeholder="City"
-                  disabled={addressLoading || addressSaving}
-                  style={{
-                    minHeight: '44px',
-                    background: 'var(--color-bg)',
-                    color: 'var(--color-text)',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: '10px',
-                    padding: '0 12px',
-                    fontSize: '14px',
-                  }}
-                />
-                <input
-                  value={addressForm.state}
-                  onChange={(e) => updateAddressFormField('state', e.target.value)}
-                  placeholder="State"
-                  disabled={addressLoading || addressSaving}
-                  style={{
-                    minHeight: '44px',
-                    background: 'var(--color-bg)',
-                    color: 'var(--color-text)',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: '10px',
-                    padding: '0 12px',
-                    fontSize: '14px',
-                  }}
-                />
-              </div>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
-                  gap: '10px',
-                }}
-              >
-                <input
-                  value={addressForm.country}
-                  onChange={(e) => updateAddressFormField('country', e.target.value)}
-                  placeholder="Country"
-                  disabled={addressLoading || addressSaving}
-                  style={{
-                    minHeight: '44px',
-                    background: 'var(--color-bg)',
-                    color: 'var(--color-text)',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: '10px',
-                    padding: '0 12px',
-                    fontSize: '14px',
-                  }}
-                />
-                <input
-                  value={addressForm.postal_code}
-                  onChange={(e) => updateAddressFormField('postal_code', e.target.value)}
-                  placeholder="Postal code"
-                  disabled={addressLoading || addressSaving}
-                  style={{
-                    minHeight: '44px',
-                    background: 'var(--color-bg)',
-                    color: 'var(--color-text)',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: '10px',
-                    padding: '0 12px',
-                    fontSize: '14px',
-                  }}
-                />
-              </div>
-              <input
-                value={addressForm.delivery_phone}
-                onChange={(e) => updateAddressFormField('delivery_phone', e.target.value)}
-                placeholder="Delivery phone number"
-                disabled={addressLoading || addressSaving}
-                style={{
-                  minHeight: '44px',
-                  background: 'var(--color-bg)',
-                  color: 'var(--color-text)',
-                  border: '1px solid var(--color-border)',
-                  borderRadius: '10px',
-                  padding: '0 12px',
-                  fontSize: '14px',
-                }}
-              />
-            </div>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-text)', fontSize: '13px' }}>
-              <input
-                type="checkbox"
-                checked={setDefaultOnSave}
-                onChange={(e) => setSetDefaultOnSave(e.target.checked)}
-                disabled={addressLoading || addressSaving}
-              />
-              Use as default delivery address
-            </label>
-
-            {addressError && (
-              <p style={{ margin: 0, color: 'var(--color-error)', fontSize: '12px' }}>{addressError}</p>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                              <p style={{ margin: 0, color: 'var(--color-text)', fontSize: '13px', fontWeight: 700, flex: 1 }}>
+                                {addr.formatted}
+                              </p>
+                              {isSelected && (
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  background: 'var(--color-primary)',
+                                  color: 'var(--color-white)',
+                                  borderRadius: '20px',
+                                  padding: '2px 8px',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  whiteSpace: 'nowrap',
+                                  flexShrink: 0,
+                                }}>
+                                  ✓ Delivery
+                                </span>
+                              )}
+                            </div>
+                            <p style={{ margin: '4px 0 0', color: 'var(--color-text-muted)', fontSize: '12px' }}>
+                              Phone: {addr.delivery_phone}
+                            </p>
+                            <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
+                              {!isSelected && (
+                                <button
+                                  onClick={() => void selectAddress(addr.id)}
+                                  disabled={addressSaving}
+                                  style={{
+                                    minHeight: '34px',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    background: 'var(--color-primary)',
+                                    color: 'var(--color-white)',
+                                    padding: '0 12px',
+                                    fontSize: '12px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Use for delivery
+                                </button>
+                              )}
+                              <button
+                                onClick={() => startEditAddress(addr)}
+                                disabled={addressSaving}
+                                style={{
+                                  minHeight: '34px',
+                                  borderRadius: '8px',
+                                  border: '1px solid var(--color-border)',
+                                  background: 'transparent',
+                                  color: 'var(--color-text)',
+                                  padding: '0 12px',
+                                  fontSize: '12px',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => void deleteAddress(addr.id)}
+                                disabled={addressSaving}
+                                style={{
+                                  minHeight: '34px',
+                                  borderRadius: '8px',
+                                  border: '1px solid color-mix(in srgb, var(--color-error) 45%, var(--color-border))',
+                                  background: 'transparent',
+                                  color: 'var(--color-error)',
+                                  padding: '0 12px',
+                                  fontSize: '12px',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
+              </>
             )}
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => {
-                  setShowAddressModal(false);
-                  setAddressError(null);
-                }}
-                disabled={addressSaving}
-                style={{
-                  minHeight: '44px',
-                  padding: '0 14px',
-                  borderRadius: '10px',
-                  border: '1px solid var(--color-border)',
-                  background: 'transparent',
-                  color: 'var(--color-text)',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => void saveAddress()}
-                disabled={addressLoading || addressSaving}
-                style={{
-                  minHeight: '44px',
-                  padding: '0 14px',
-                  borderRadius: '10px',
-                  border: 'none',
-                  background: 'var(--color-primary)',
-                  color: 'var(--color-white)',
-                  fontWeight: 700,
-                }}
-              >
-                {addressSaving ? 'Saving...' : editingAddressId ? 'Update Address' : 'Save Address'}
-              </button>
-            </div>
+
+            {/* ── Screen 2: Address form ─────────────────────────────── */}
+            {addressScreen === 'form' && (
+              <>
+                {/* Header with back arrow */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '16px 18px',
+                  borderBottom: '1px solid var(--color-border)',
+                  flexShrink: 0,
+                }}>
+                  <button
+                    onClick={() => { setAddressScreen('list'); setAddressError(null); }}
+                    aria-label="Back to address list"
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '10px',
+                      border: '1px solid var(--color-border)',
+                      background: 'transparent',
+                      color: 'var(--color-text)',
+                      fontSize: '18px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    ←
+                  </button>
+                  <h3 style={{ margin: 0, color: 'var(--color-text)', fontFamily: 'var(--font-fraunces)', fontSize: '19px' }}>
+                    {editingAddressId ? 'Edit Address' : 'Add Address'}
+                  </h3>
+                </div>
+
+                {/* Form body */}
+                <div style={{
+                  overflowY: 'auto',
+                  flex: 1,
+                  padding: '16px 18px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                }}>
+                  <input
+                    value={addressForm.unit}
+                    onChange={(e) => updateAddressFormField('unit', e.target.value)}
+                    placeholder="Unit / House number"
+                    disabled={addressSaving}
+                    style={{
+                      minHeight: '46px',
+                      background: 'var(--color-bg)',
+                      color: 'var(--color-text)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: '10px',
+                      padding: '0 14px',
+                      fontSize: '14px',
+                    }}
+                  />
+                  <input
+                    value={addressForm.street}
+                    onChange={(e) => updateAddressFormField('street', e.target.value)}
+                    placeholder="Street"
+                    disabled={addressSaving}
+                    style={{
+                      minHeight: '46px',
+                      background: 'var(--color-bg)',
+                      color: 'var(--color-text)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: '10px',
+                      padding: '0 14px',
+                      fontSize: '14px',
+                    }}
+                  />
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: '10px' }}>
+                    <input
+                      value={addressForm.city}
+                      onChange={(e) => updateAddressFormField('city', e.target.value)}
+                      placeholder="City"
+                      disabled={addressSaving}
+                      style={{
+                        minHeight: '46px',
+                        background: 'var(--color-bg)',
+                        color: 'var(--color-text)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: '10px',
+                        padding: '0 14px',
+                        fontSize: '14px',
+                      }}
+                    />
+                    <input
+                      value={addressForm.state}
+                      onChange={(e) => updateAddressFormField('state', e.target.value)}
+                      placeholder="State"
+                      disabled={addressSaving}
+                      style={{
+                        minHeight: '46px',
+                        background: 'var(--color-bg)',
+                        color: 'var(--color-text)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: '10px',
+                        padding: '0 14px',
+                        fontSize: '14px',
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: '10px' }}>
+                    <input
+                      value={addressForm.country}
+                      onChange={(e) => updateAddressFormField('country', e.target.value)}
+                      placeholder="Country"
+                      disabled={addressSaving}
+                      style={{
+                        minHeight: '46px',
+                        background: 'var(--color-bg)',
+                        color: 'var(--color-text)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: '10px',
+                        padding: '0 14px',
+                        fontSize: '14px',
+                      }}
+                    />
+                    <input
+                      value={addressForm.postal_code}
+                      onChange={(e) => updateAddressFormField('postal_code', e.target.value)}
+                      placeholder="Postal code"
+                      disabled={addressSaving}
+                      style={{
+                        minHeight: '46px',
+                        background: 'var(--color-bg)',
+                        color: 'var(--color-text)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: '10px',
+                        padding: '0 14px',
+                        fontSize: '14px',
+                      }}
+                    />
+                  </div>
+                  <input
+                    value={addressForm.delivery_phone}
+                    onChange={(e) => updateAddressFormField('delivery_phone', e.target.value)}
+                    placeholder="Delivery phone number"
+                    disabled={addressSaving}
+                    style={{
+                      minHeight: '46px',
+                      background: 'var(--color-bg)',
+                      color: 'var(--color-text)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: '10px',
+                      padding: '0 14px',
+                      fontSize: '14px',
+                    }}
+                  />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-text)', fontSize: '13px' }}>
+                    <input
+                      type="checkbox"
+                      checked={setDefaultOnSave}
+                      onChange={(e) => setSetDefaultOnSave(e.target.checked)}
+                      disabled={addressSaving}
+                    />
+                    Use as default delivery address
+                  </label>
+
+                  {addressError && (
+                    <p style={{ margin: 0, color: 'var(--color-error)', fontSize: '13px' }}>{addressError}</p>
+                  )}
+                </div>
+
+                {/* Sticky save footer */}
+                <div style={{
+                  display: 'flex',
+                  gap: '10px',
+                  padding: '14px 18px',
+                  borderTop: '1px solid var(--color-border)',
+                  flexShrink: 0,
+                }}>
+                  <button
+                    onClick={() => { setAddressScreen('list'); setAddressError(null); }}
+                    disabled={addressSaving}
+                    style={{
+                      flex: 1,
+                      minHeight: '46px',
+                      borderRadius: '10px',
+                      border: '1px solid var(--color-border)',
+                      background: 'transparent',
+                      color: 'var(--color-text)',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => void saveAddress()}
+                    disabled={addressSaving}
+                    style={{
+                      flex: 2,
+                      minHeight: '46px',
+                      borderRadius: '10px',
+                      border: 'none',
+                      background: 'var(--color-primary)',
+                      color: 'var(--color-white)',
+                      fontWeight: 700,
+                      fontSize: '14px',
+                      cursor: addressSaving ? 'not-allowed' : 'pointer',
+                      opacity: addressSaving ? 0.7 : 1,
+                    }}
+                  >
+                    {addressSaving ? 'Saving…' : editingAddressId ? 'Update Address' : 'Save Address'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

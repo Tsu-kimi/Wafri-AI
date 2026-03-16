@@ -531,7 +531,7 @@ _reflect_and_retry = _WafrivetRetryPlugin(
 # slip past the plugin (e.g. environment misconfiguration) so Fatima always
 # speaks a graceful error instead of silently dying.
 
-async def _safe_tool_callback(tool, tool_args: dict, tool_context: ToolContext):
+async def _safe_tool_callback(tool, args: dict, tool_context: ToolContext):
     """
     Pre-flight guard executed by ADK before every tool invocation.
 
