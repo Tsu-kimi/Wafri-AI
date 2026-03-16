@@ -1,11 +1,10 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  ArrowDown2, 
-  Notification, 
-  Global, 
-  ShoppingCart, 
+import {
+  ArrowDown2,
+  Notification,
+  ShoppingCart,
   Location,
   Login,
   Logout
@@ -83,10 +82,10 @@ export function ActionMenu({
         style={{
           ...triggerButtonStyle,
           background: (hasNotifications && !isOpen) || (cartCount > 0 && !isOpen)
-            ? 'color-mix(in srgb, var(--color-error) 22%, transparent)' 
+            ? 'color-mix(in srgb, var(--color-error) 22%, transparent)'
             : triggerButtonStyle.background,
-          border: (hasNotifications && !isOpen) || (cartCount > 0 && !isOpen) 
-            ? '1px solid var(--color-error)' 
+          border: (hasNotifications && !isOpen) || (cartCount > 0 && !isOpen)
+            ? '1px solid var(--color-error)'
             : triggerButtonStyle.border,
           transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
           zIndex: 100,
@@ -95,10 +94,10 @@ export function ActionMenu({
         aria-label={`Toggle action menu${cartCount > 0 ? `, ${cartCount} items in cart` : ''}`}
         aria-expanded={isOpen}
       >
-        <ArrowDown2 
-          variant="Linear" 
-          color={(hasNotifications && !isOpen) || (cartCount > 0 && !isOpen) ? 'var(--color-error)' : 'var(--color-white)'} 
-          size={24} 
+        <ArrowDown2
+          variant="Linear"
+          color={(hasNotifications && !isOpen) || (cartCount > 0 && !isOpen) ? 'var(--color-error)' : 'var(--color-white)'}
+          size={24}
         />
         {cartCount > 0 && !isOpen && (
           <span
@@ -147,28 +146,12 @@ export function ActionMenu({
             }}
             aria-label="View notifications"
           >
-            <Notification 
-              variant="Linear" 
-              color="var(--color-white)" 
-              size={24} 
+            <Notification
+              variant="Linear"
+              color="var(--color-white)"
+              size={24}
             />
           </button>
-
-          {/* Globe/Website Icon */}
-          <a
-            href="https://wafrivet.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              ...baseItemStyle,
-              animation: 'menu-slide-down 0.3s cubic-bezier(0.22, 1, 0.36, 1) both',
-              animationDelay: '0.1s',
-            }}
-            aria-label="Visit Wafrivet website"
-          >
-            <Global variant="Linear" color="var(--color-white)" size={24} />
-          </a>
-
           {/* Cart Icon */}
           <button
             onClick={() => {
