@@ -29,142 +29,151 @@ interface ClinicCardProps {
 }
 
 function ClinicCard({ clinic }: ClinicCardProps) {
-  const openNowBg =
-    clinic.openNow === true
-      ? 'rgba(46,160,67,0.85)'
-      : clinic.openNow === false
-        ? 'rgba(248,81,73,0.75)'
-        : 'rgba(88,96,105,0.7)';
-
-  const openNowLabel =
-    clinic.openNow === true ? 'OPEN NOW' : clinic.openNow === false ? 'CLOSED' : 'HOURS N/A';
+  const isOpen = clinic.openNow === true;
+  const isClosed = clinic.openNow === false;
+  const openNowLabel = isOpen ? 'OPEN NOW' : isClosed ? 'CLOSED' : 'HOURS N/A';
 
   return (
-    <div
+    <article
       style={{
-        minWidth: '260px',
-        width: '260px',
-        maxWidth: '300px',
-        background: 'rgba(22, 30, 46, 0.92)',
-        border: '1.5px solid rgba(48,54,61,0.9)',
-        borderRadius: '14px',
-        padding: '14px',
-        flexShrink: 0,
+        flex: '0 0 280px',
+        width: '280px',
+        minWidth: '280px',
+        borderRadius: '16px',
+        overflow: 'hidden',
+        background: 'var(--color-bg)',
+        border: `2px solid var(--color-border)`,
         display: 'flex',
         flexDirection: 'column',
         gap: '10px',
-        backdropFilter: 'blur(12px)',
+        boxShadow:
+          '0 2px 8px rgba(0,0,0,0.3)',
+        cursor: 'default',
         scrollSnapAlign: 'start',
       }}
     >
-      {/* Open/closed pill */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <span
-          style={{
-            background: openNowBg,
-            color: '#fff',
-            fontSize: '10px',
-            fontWeight: 700,
-            letterSpacing: '0.08em',
-            padding: '2px 8px',
-            borderRadius: '20px',
-            whiteSpace: 'nowrap',
-          }}
-          aria-label={`Clinic status: ${openNowLabel}`}
-        >
-          {openNowLabel}
-        </span>
-      </div>
-
-      {/* Name */}
-      <p
+      <div
         style={{
-          fontSize: '14px',
-          fontWeight: 700,
-          color: 'var(--color-text)',
-          lineHeight: 1.3,
-          margin: 0,
-          // Clamp to 2 lines
-          display: '-webkit-box',
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: 'vertical',
-          overflow: 'hidden',
+          padding: '12px 12px 10px',
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+          background: 'var(--color-surface)',
         }}
       >
-        {clinic.name}
-      </p>
+        {/* Status pill */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span
+            style={{
+              background: isOpen
+                ? 'color-mix(in srgb, var(--color-primary) 85%, transparent)'
+                : isClosed
+                  ? 'rgba(248,81,73,0.9)'
+                  : 'color-mix(in srgb, var(--color-border) 80%, transparent)',
+              color: '#fff',
+              fontSize: '10px',
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              padding: '2px 8px',
+              borderRadius: '20px',
+              whiteSpace: 'nowrap',
+            }}
+            aria-label={`Clinic status: ${openNowLabel}`}
+          >
+            {openNowLabel}
+          </span>
+        </div>
 
-      {/* Address */}
-      {clinic.address && (
+        {/* Name */}
         <p
           style={{
             fontSize: '12px',
-            color: 'var(--color-text-muted)',
+            fontWeight: 700,
+            color: 'var(--color-text)',
+            lineHeight: 1.35,
             margin: 0,
-            lineHeight: 1.4,
             display: '-webkit-box',
             WebkitLineClamp: 2,
             WebkitBoxOrient: 'vertical',
             overflow: 'hidden',
           }}
         >
-          {clinic.address}
+          {clinic.name}
         </p>
-      )}
 
-      {/* Action buttons */}
-      <div style={{ display: 'flex', gap: '8px', marginTop: 'auto' }}>
-        {clinic.phone && (
-          <a
-            href={`tel:${clinic.phone}`}
-            aria-label={`Call ${clinic.name}`}
+        {/* Address */}
+        {clinic.address && (
+          <p
             style={{
-              flex: 1,
-              background: 'rgba(46,160,67,0.15)',
-              border: '1px solid rgba(46,160,67,0.5)',
-              color: 'var(--color-primary)',
               fontSize: '12px',
-              fontWeight: 700,
-              borderRadius: '10px',
-              padding: '8px 4px',
-              textAlign: 'center',
-              textDecoration: 'none',
-              display: 'block',
-              minHeight: '36px',
-              lineHeight: '20px',
+              color: 'var(--color-text-muted)',
+              margin: 0,
+              lineHeight: 1.4,
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
             }}
           >
-            📞 Call
-          </a>
+            {clinic.address}
+          </p>
         )}
 
-        {clinic.googleMapsUri && (
-          <a
-            href={clinic.googleMapsUri}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`Navigate to ${clinic.name} in Google Maps`}
-            style={{
-              flex: 1,
-              background: 'rgba(56,139,253,0.15)',
-              border: '1px solid rgba(56,139,253,0.4)',
-              color: '#388bfd',
-              fontSize: '12px',
-              fontWeight: 700,
-              borderRadius: '10px',
-              padding: '8px 4px',
-              textAlign: 'center',
-              textDecoration: 'none',
-              display: 'block',
-              minHeight: '36px',
-              lineHeight: '20px',
-            }}
-          >
-            🗺 Maps
-          </a>
-        )}
+        {/* Action buttons */}
+        <div style={{ display: 'flex', gap: '8px', marginTop: 'auto' }}>
+          {clinic.phone && (
+            <a
+              href={`tel:${clinic.phone}`}
+              aria-label={`Call ${clinic.name}`}
+              style={{
+                flex: 1,
+                background:
+                  'color-mix(in srgb, var(--color-primary) 12%, transparent)',
+                color: 'var(--color-primary)',
+                border:
+                  '1.5px solid color-mix(in srgb, var(--color-primary) 35%, transparent)',
+                borderRadius: '10px',
+                padding: '8px 4px',
+                fontSize: '12px',
+                fontWeight: 700,
+                textAlign: 'center',
+                textDecoration: 'none',
+                minHeight: '36px',
+                lineHeight: '20px',
+              }}
+            >
+              Call
+            </a>
+          )}
+
+          {clinic.googleMapsUri && (
+            <a
+              href={clinic.googleMapsUri}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Navigate to ${clinic.name} in Google Maps`}
+              style={{
+                flex: 1,
+                background: 'var(--color-primary)',
+                color: 'var(--color-white)',
+                border: '1.5px solid transparent',
+                borderRadius: '10px',
+                padding: '8px 4px',
+                fontSize: '12px',
+                fontWeight: 700,
+                textAlign: 'center',
+                textDecoration: 'none',
+                minHeight: '36px',
+                lineHeight: '20px',
+              }}
+            >
+              Open in Maps
+            </a>
+          )}
+        </div>
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -188,28 +197,48 @@ export function ClinicCardRow({ clinics }: ClinicCardRowProps) {
 
   return (
     <div
-      role="list"
+      role="region"
       aria-label="Nearby veterinary clinics"
       style={{
-        display: 'flex',
-        flexDirection: 'row',
-        gap: '12px',
-        overflowX: 'auto',
-        overflowY: 'hidden',
-        scrollSnapType: 'x mandatory',
-        WebkitOverflowScrolling: 'touch',
-        padding: '4px 16px 12px',
+        animation: 'slide-up 0.42s cubic-bezier(0.34, 1.38, 0.64, 1)',
         transform: isVisible ? 'translateY(0)' : 'translateY(100%)',
         transition: 'transform 0.35s cubic-bezier(0.22, 1, 0.36, 1)',
-        scrollbarWidth: 'none',
-        msOverflowStyle: 'none',
-      } as React.CSSProperties}
+      }}
     >
-      {clinics.map((clinic, i) => (
-        <div key={`${clinic.name}-${i}`} role="listitem">
-          <ClinicCard clinic={clinic} />
-        </div>
-      ))}
+      <p
+        style={{
+          fontSize: '12px',
+          fontWeight: 700,
+          fontFamily: 'var(--font-fraunces)',
+          color: 'var(--color-text)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.09em',
+          padding: '0 16px 8px',
+          margin: 0,
+        }}
+      >
+        Nearby vet clinics ({clinics.length})
+      </p>
+
+      <div
+        className="hide-scrollbar"
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          gap: '10px',
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          scrollSnapType: 'x mandatory',
+          WebkitOverflowScrolling: 'touch',
+          padding: '0 16px 12px',
+        }}
+      >
+        {clinics.map((clinic, i) => (
+          <div key={`${clinic.name}-${i}`} role="listitem">
+            <ClinicCard clinic={clinic} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
