@@ -54,6 +54,7 @@ logger = logging.getLogger("wafrivet.tools.vet_clinics")
 # Google Places API (New) Nearby Search endpoint.
 # Never use the legacy maps.googleapis.com endpoint.
 _PLACES_URL = "https://places.googleapis.com/v1/places:searchNearby"
+_PLACES_TEXT_URL = "https://places.googleapis.com/v1/places:searchText"
 _GEOCODING_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 
 # FieldMask controls billing tier — only request what we display.
@@ -77,6 +78,13 @@ _RADIUS_FALLBACK = [10_000.0, 25_000.0, 50_000.0]
 
 # Max results per API call (must be between 1 and 20).
 _MAX_RESULTS = 5
+
+# Fallback text queries for regions where place types are sparse/misclassified.
+_TEXT_QUERY_FALLBACK = [
+    "veterinary clinic",
+    "veterinarian",
+    "pet clinic",
+]
 
 # NAFDAC animal health helpline (Nigeria) — spoken when no clinics found.
 _NAFDAC_HELPLINE = "0800-162-3232"
@@ -226,6 +234,58 @@ async def _search_nearby(lat: float, lon: float, radius_m: float) -> list[dict[s
         return []
 
 
+async def _search_text(lat: float, lon: float, radius_m: float, text_query: str) -> list[dict[str, Any]]:
+    """
+    Call Places API (New) Text Search as a fallback when place types are sparse.
+
+    Uses locationBias circle (Text Search does not support circle restriction).
+    """
+    body = {
+        "textQuery": text_query,
+        "languageCode": "en",
+        "regionCode": "NG",
+        "rankPreference": "DISTANCE",
+        "pageSize": _MAX_RESULTS,
+        "locationBias": {
+            "circle": {
+                "center": {"latitude": lat, "longitude": lon},
+                "radius": radius_m,
+            }
+        },
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": _api_key(),
+        "X-Goog-FieldMask": _FIELD_MASK,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(_PLACES_TEXT_URL, json=body, headers=headers)
+        payload = resp.json()
+        resp.raise_for_status()
+        places = payload.get("places") or []
+        if not places:
+            logger.info(
+                "Places Text Search returned zero results for query=%r lat=%.5f lon=%.5f radius_m=%.0f payload_snippet=%s",
+                text_query,
+                lat,
+                lon,
+                radius_m,
+                json.dumps(payload)[:400],
+            )
+        return places
+    except httpx.HTTPStatusError as exc:
+        logger.warning(
+            "Places Text Search error: %s %s",
+            exc.response.status_code,
+            exc.response.text[:200],
+        )
+        return []
+    except Exception as exc:
+        logger.warning("Places Text Search unexpected error: %s", exc)
+        return []
+
+
 def _normalise_clinic(place: dict[str, Any]) -> dict[str, Any]:
     """
     Map a raw Places API (New) place dict to the CLINICS_FOUND event shape.
@@ -363,6 +423,24 @@ async def find_nearest_vet_clinic(tool_context: ToolContext) -> dict[str, Any]:
             "No vet clinics within %.0f m of (%.5f, %.5f) — expanding radius",
             radius_m, lat_f, lon_f,
         )
+
+    # ── Step 2b: fallback to Text Search (type filtering is often incomplete) ─
+    if not clinics:
+        radius_m = float(_RADIUS_FALLBACK[-1])
+        for q in _TEXT_QUERY_FALLBACK:
+            raw_places = await _search_text(lat_f, lon_f, radius_m, q)
+            if raw_places:
+                clinics = [_normalise_clinic(p) for p in raw_places]
+                effective_radius = radius_m
+                logger.info(
+                    "Text Search fallback matched %d place(s) for query=%r within %.0f m of (%.5f, %.5f)",
+                    len(clinics),
+                    q,
+                    radius_m,
+                    lat_f,
+                    lon_f,
+                )
+                break
 
     if not clinics:
         fallback_msg = (

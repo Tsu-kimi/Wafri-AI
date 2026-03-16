@@ -494,6 +494,21 @@ async def run_bridge(
             [up_task, down_task, sub_task],
             return_when=asyncio.FIRST_COMPLETED,
         )
+        # IMPORTANT: Always retrieve results from completed tasks.
+        # Otherwise, exceptions raised inside a task (e.g. Gemini Live closing
+        # with code 1000) will be logged as "Task exception was never retrieved"
+        # by the event loop / uvicorn, even if the task had its own try/except.
+        for t in done:
+            try:
+                t.result()
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:
+                exc_str = str(exc)
+                if "1000" in exc_str or "operation was cancelled" in exc_str.lower():
+                    _log("info", "bridge task ended (1000 — normal cancellation)", "TASK_CANCELLED")
+                else:
+                    _log("error", f"bridge task ended with exception: {exc}", "TASK_ERR", tb=_traceback.format_exc())
         for t in pending:
             t.cancel()
             try:
