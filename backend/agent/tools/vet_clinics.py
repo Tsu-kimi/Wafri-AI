@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 from typing import Any, Optional
 
@@ -75,6 +76,7 @@ _INCLUDED_TYPES = ["veterinary_care", "pet_care"]
 
 # Radius fallback ladder (metres).  Max is 50 000 m per the API spec.
 _RADIUS_FALLBACK = [10_000.0, 25_000.0, 50_000.0]
+_MAX_RADIUS_M = float(_RADIUS_FALLBACK[-1])
 
 # Max results per API call (must be between 1 and 20).
 _MAX_RESULTS = 5
@@ -102,6 +104,25 @@ def _api_key() -> str:
             "Add it to Cloud Run via --set-secrets=GOOGLE_MAPS_KEY=GOOGLE_MAPS_KEY:latest."
         )
     return key
+
+
+def _distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """
+    Great-circle distance between two WGS84 points (metres).
+
+    Used to hard-cap clinic distance to _MAX_RADIUS_M even if the API
+    occasionally returns out-of-circle results, especially from Text Search.
+    """
+    # Haversine formula
+    r_earth = 6_371_000.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lambda = math.radians(lon2 - lon1)
+
+    a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return r_earth * c
 
 
 def _geocode_cache_key(location_query: str) -> str:
@@ -221,7 +242,17 @@ async def _search_nearby(lat: float, lon: float, radius_m: float) -> list[dict[s
                 radius_m,
                 json.dumps(payload)[:400],
             )
-        return places
+        # Extra safety: filter out any places that are somehow beyond radius_m.
+        filtered: list[dict[str, Any]] = []
+        for p in places:
+            loc = p.get("location") or {}
+            plat = loc.get("latitude")
+            plon = loc.get("longitude")
+            if plat is None or plon is None:
+                continue
+            if _distance_m(lat, lon, float(plat), float(plon)) <= radius_m:
+                filtered.append(p)
+        return filtered
     except httpx.HTTPStatusError as exc:
         logger.warning(
             "Places API error: %s %s",
@@ -249,7 +280,7 @@ async def _search_text(lat: float, lon: float, radius_m: float, text_query: str)
         "locationBias": {
             "circle": {
                 "center": {"latitude": lat, "longitude": lon},
-                "radius": radius_m,
+                "radius": min(radius_m, _MAX_RADIUS_M),
             }
         },
     }
@@ -273,7 +304,18 @@ async def _search_text(lat: float, lon: float, radius_m: float, text_query: str)
                 radius_m,
                 json.dumps(payload)[:400],
             )
-        return places
+        # Hard-cap to _MAX_RADIUS_M from the actual user location.
+        max_r = min(radius_m, _MAX_RADIUS_M)
+        filtered: list[dict[str, Any]] = []
+        for p in places:
+            loc = p.get("location") or {}
+            plat = loc.get("latitude")
+            plon = loc.get("longitude")
+            if plat is None or plon is None:
+                continue
+            if _distance_m(lat, lon, float(plat), float(plon)) <= max_r:
+                filtered.append(p)
+        return filtered
     except httpx.HTTPStatusError as exc:
         logger.warning(
             "Places Text Search error: %s %s",
@@ -426,7 +468,7 @@ async def find_nearest_vet_clinic(tool_context: ToolContext) -> dict[str, Any]:
 
     # ── Step 2b: fallback to Text Search (type filtering is often incomplete) ─
     if not clinics:
-        radius_m = float(_RADIUS_FALLBACK[-1])
+        radius_m = _MAX_RADIUS_M
         for q in _TEXT_QUERY_FALLBACK:
             raw_places = await _search_text(lat_f, lon_f, radius_m, q)
             if raw_places:
@@ -443,8 +485,9 @@ async def find_nearest_vet_clinic(tool_context: ToolContext) -> dict[str, Any]:
                 break
 
     if not clinics:
+        max_radius_m = _MAX_RADIUS_M
         fallback_msg = (
-            f"I searched up to 50 km around you but couldn't find a registered "
+            f"I searched up to {int(max_radius_m / 1000)} km around you but couldn't find a registered "
             f"veterinary clinic nearby. Please call the NAFDAC animal health helpline "
             f"at {_NAFDAC_HELPLINE} for emergency veterinary referrals."
         )
@@ -452,7 +495,7 @@ async def find_nearest_vet_clinic(tool_context: ToolContext) -> dict[str, Any]:
             "status": "success",
             "data": {
                 "clinics": [],
-                "radius_m": 50_000.0,
+                "radius_m": max_radius_m,
                 "fallback_message": fallback_msg,
             },
             "message": fallback_msg,

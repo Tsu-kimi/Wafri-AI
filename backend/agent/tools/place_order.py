@@ -172,15 +172,6 @@ async def place_order(
             message (str):  The order confirmation to read aloud. Includes the
                             reference number and estimated delivery window.
     """
-    # Validate phone
-    phone = (phone or "").strip()
-    if not re.match(r"^\+[1-9]\d{6,14}$", phone):
-        return {
-            "status": "error",
-            "data":   {},
-            "message": "A valid phone number in E.164 format is required to place an order.",
-        }
-
     # Retrieve RLS session identity from ADK state
     auth_session_id: str = str(tool_context.state.get("auth_session_id") or "")
     if not auth_session_id:
@@ -189,6 +180,35 @@ async def place_order(
             "data":   {},
             "message": "Session not established. Please reconnect.",
         }
+
+    # Resolve the account phone from session state / DB link.
+    # Never guess a default number.
+    session_phone: str = str(tool_context.state.get("farmer_phone") or "").strip()
+    if not session_phone:
+        try:
+            from backend.services.farmer_service import _resolve_phone_from_session
+
+            session_phone = (await _resolve_phone_from_session(auth_session_id)) or ""
+            session_phone = session_phone.strip()
+            if session_phone:
+                tool_context.state["farmer_phone"] = session_phone
+        except Exception as _exc:
+            logger.warning("place_order: phone resolution failed: %s", _exc)
+
+    if session_phone:
+        phone = session_phone
+    else:
+        # Validate the phone provided by the agent/user.
+        phone = (phone or "").strip()
+        if not re.match(r"^\+[1-9]\d{6,14}$", phone):
+            return {
+                "status": "error",
+                "data":   {},
+                "message": (
+                    "I need your phone number to place the order and send your confirmation SMS. "
+                    "Please share it in E.164 format, for example +2348012345678."
+                ),
+            }
 
     from backend.db.rls import rls_context
 
